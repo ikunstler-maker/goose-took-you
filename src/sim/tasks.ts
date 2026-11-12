@@ -1,16 +1,24 @@
 import { INTERACT_RANGE, TASKS_PER_PLAYER } from '../config';
 import type { Level } from './level';
-import type { PropKind } from './prefabs';
+import type { PropKind, RoomType } from './prefabs';
 import { createRng } from './rng';
 
 /** Mini-game that completes a task. Folder names in `src/minigames/`. */
-export type TaskKind = 'modus' | 'copycat';
+export type TaskKind = 'modus' | 'copycat' | 'news' | 'cargo';
 
 /** Hub furniture that hosts each task kind. */
 export const STATION_PROPS: Record<TaskKind, PropKind> = {
   modus: 'deskBuyer',
   copycat: 'deskCopy',
+  news: 'dualStation',
+  cargo: 'shelf',
 };
+
+/** Tasks that open a mini-game window; the rest are done in the office itself. */
+export const WINDOW_TASKS: readonly TaskKind[] = ['modus', 'copycat', 'news'];
+
+/** Rooms a cargo box can be ordered to; the task list gives only a vague hint. */
+export const CARGO_DESTINATIONS: readonly RoomType[] = ['lounge', 'greenhouse'];
 
 /** A workplace where a task can be done; points at a hub prop. */
 export interface Station {
@@ -27,6 +35,10 @@ export interface Task {
   /** Participant the task belongs to; 0 is the local player until roles arrive. */
   owner: number;
   done: boolean;
+  /** Cargo only: room id the box must reach. */
+  target: number | null;
+  /** Cargo only: the box has been taken from the shelf. */
+  started: boolean;
 }
 
 export function findStations(level: Level): Station[] {
@@ -53,7 +65,22 @@ export function assignTasks(stations: Station[], seed: number, owner: number): T
       if (station && picked.length < TASKS_PER_PLAYER) picked.push(station);
     }
   }
-  return picked.map((station, id) => ({ id, kind: station.kind, station: station.id, owner, done: false }));
+  return picked.map((station, id) => ({
+    id,
+    kind: station.kind,
+    station: station.id,
+    owner,
+    done: false,
+    target: null,
+    started: false,
+  }));
+}
+
+/** Gives every cargo task a destination among the green zones. */
+export function assignCargoTargets(level: Level, tasks: Task[], seed: number): void {
+  const rng = createRng(seed ^ 0xb0c5);
+  const rooms = level.rooms.filter((r) => CARGO_DESTINATIONS.includes(r.type));
+  for (const task of tasks) if (task.kind === 'cargo' && rooms.length > 0) task.target = rng.pick(rooms).id;
 }
 
 /** Distance from a point to the edge of a station's furniture. */
@@ -69,7 +96,7 @@ export function taskInReach(level: Level, stations: Station[], tasks: Task[], ow
   let best: Task | null = null;
   let bestDistance = INTERACT_RANGE;
   for (const task of tasks) {
-    if (task.done || task.owner !== owner) continue;
+    if (task.done || task.started || task.owner !== owner) continue;
     const distance = stationDistance(level, stations[task.station]!, x, z);
     if (distance <= bestDistance) {
       best = task;

@@ -93,4 +93,11 @@ Entry format (≤8 lines):
 - Verify: measure `__goose.world().tick` over 3 s (≈0.24 sim s per real s here).
 - Seen: 2026-11-12
 
+### Playwright drag fails on short-lived targets
+- Symptom: «Монтаж новостніків» stays at «Вкинуто: 0 / 6» in a headless run; mouse drags never land.
+- Root cause: under SwiftShader each `page.mouse` step waits for a frame, so the picture expires (1.5 sim s) mid-drag.
+- Fix: dispatch `pointerdown` on the tile and `pointermove`/`pointerup` on `window` inside `page.evaluate`; same handlers as a real drag.
+- Verify: count climbs to 6/6 and the Giant Green Button enables.
+- Seen: 2026-11-12
+
 ## CI

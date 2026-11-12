@@ -1,5 +1,7 @@
 import { TICK } from './config';
 import { createMinigameHost } from './minigames/host';
+import { createBoxes } from './render/boxes';
+import { createBroadcast, type BroadcastView } from './render/broadcast';
 import { createChick } from './render/chick';
 import { createTaskMarkers, type TaskMarkers } from './render/markers';
 import { buildOffice, type OfficeView } from './render/office';
@@ -10,10 +12,13 @@ import { createHud } from './ui/hud';
 const stage = createStage(document.getElementById('game') as HTMLCanvasElement);
 const chick = createChick();
 stage.scene.add(chick.root);
+const boxes = createBoxes();
+stage.scene.add(boxes.root);
 
 let world: WorldState;
 let office: OfficeView | null = null;
 let markers: TaskMarkers | null = null;
+let broadcast: BroadcastView | null = null;
 
 function seedFromUrl(): number | null {
   const raw = new URLSearchParams(window.location.search).get('seed');
@@ -39,6 +44,12 @@ function rebuildOffice(): void {
   }
   markers = createTaskMarkers(world);
   stage.scene.add(markers.root);
+  if (broadcast) {
+    stage.scene.remove(broadcast.root);
+    broadcast.dispose();
+  }
+  broadcast = createBroadcast(world.level);
+  stage.scene.add(broadcast.root);
   stage.fitSun(world.level.size);
 }
 
@@ -67,13 +78,18 @@ function handle(events: SimEvent[]): void {
         hud.setTasks(world);
         break;
       case 'taskClosed':
+      case 'taskDone':
+      case 'boxPicked':
+      case 'promptChanged':
         hud.setTasks(world);
         markers?.refresh(world);
         break;
-      case 'reachChanged':
+      case 'boxSlipped':
+        hud.shout('cargo.slip');
         hud.setTasks(world);
         break;
       case 'bumped':
+      case 'broadcastStarted':
         break;
     }
   }
@@ -164,6 +180,8 @@ function frame(now: number): void {
   chick.update(player.x, player.z, player.facing, player.moving, player.emotion, time, dt);
   if (office?.update(world, time, dt)) stage.refreshShadows();
   markers?.update(time);
+  boxes.update(world, time);
+  broadcast?.update(world.broadcast, time);
   stage.follow(player.x, player.z, dt);
   stage.render();
   requestAnimationFrame(frame);

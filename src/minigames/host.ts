@@ -3,11 +3,14 @@ import { t } from '../i18n';
 import type { TaskKind } from '../sim/tasks';
 import { createCopycatView } from './copycat/view';
 import { createModusView } from './modus/view';
+import { createNewsView } from './news/view';
 import type { MinigameFactory, MinigameView } from './types';
 
-const FACTORIES: Record<TaskKind, MinigameFactory> = {
+/** Window mini-games; cargo is played in the office itself. */
+const FACTORIES: Partial<Record<TaskKind, MinigameFactory>> = {
   modus: createModusView,
   copycat: createCopycatView,
+  news: createNewsView,
 };
 
 export interface MinigameHost {
@@ -67,10 +70,12 @@ export function createMinigameHost(handlers: { onWin(): void; onCancel(): void }
   return {
     open(nextKind, seed) {
       close();
+      const factory = FACTORIES[nextKind];
+      if (!factory) return;
       kind = nextKind;
       overlay.hidden = false;
       panel.classList.remove('won');
-      view = FACTORIES[nextKind]({
+      view = factory({
         seed,
         body,
         win: () => {

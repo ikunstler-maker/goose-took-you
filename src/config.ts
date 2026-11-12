@@ -72,3 +72,28 @@ export const COPYCAT_SWITCHES = 3;
 export const MINIGAME_DONE_PAUSE = 0.9;
 /** Height of the task arrows above stations, metres. */
 export const MARKER_HEIGHT = 2.1;
+
+/** Mini-game «Монтаж новостніків». */
+/** Seconds before a bot partner sits down when nobody else joins. */
+export const NEWS_PARTNER_DELAY = 3;
+/** Files the pair must push through the node. */
+export const NEWS_FILES = 6;
+export const NEWS_GRID = 4;
+/** How long a picture stays in the grid, and the pause between pictures, seconds. */
+export const NEWS_TILE_LIFE = 1.5;
+export const NEWS_TILE_EVERY = 0.7;
+/** How often the partner's node lights up, and how fast the bot partner reacts, seconds. */
+export const NEWS_NODE_EVERY = 1.6;
+export const NEWS_BOT_REACTION = 0.5;
+/** Delay before the bot partner presses the Giant Green Button too, seconds. */
+export const NEWS_BOT_BUTTON = 0.8;
+/** Length of the «Екстрені Новини» broadcast in the Lobby, seconds. */
+export const NEWS_BROADCAST_TIME = 12;
+
+/** «Вантажник»: chance a box slips out of the wings on one delivery route (BOX_SLIP_CHANCE). */
+export const BOX_SLIP_CHANCE = 0.12;
+/** A slip happens after this many metres of carrying, picked between the two. */
+export const BOX_SLIP_MIN = 6;
+export const BOX_SLIP_MAX = 26;
+/** Side of a cargo box, metres. */
+export const BOX_SIZE = 0.55;
