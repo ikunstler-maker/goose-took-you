@@ -130,7 +130,8 @@ function planter(): THREE.Group {
   return g;
 }
 
-function cardboardBox(size = 0.8): THREE.Group {
+/** Shared cargo box model; the vacation box (stage 3) differs only by its sticker. */
+export function cardboardBox(size = 0.8): THREE.Group {
   return group(box(size, size, size, CARDBOARD, 0, size / 2, 0), box(size + 0.01, size + 0.01, 0.1, TAPE, 0, size / 2, 0, false));
 }
 

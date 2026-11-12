@@ -32,7 +32,7 @@ export function createTaskMarkers(world: WorldState): TaskMarkers {
     refresh(next) {
       for (const task of next.tasks) {
         const arrow = arrows.get(task.id);
-        if (arrow) arrow.visible = !task.done;
+        if (arrow) arrow.visible = !task.done && !task.started;
       }
     },
     update(time) {
