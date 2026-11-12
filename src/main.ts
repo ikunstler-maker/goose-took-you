@@ -1,7 +1,6 @@
-import type * as THREE from 'three';
 import { TICK } from './config';
 import { createChick } from './render/chick';
-import { animate, buildOffice, collectAnimated, disposeOffice } from './render/office';
+import { buildOffice, type OfficeView } from './render/office';
 import { createStage } from './render/stage';
 import { applyCommand, createWorld, step, type WorldState } from './sim/world';
 import { createHud } from './ui/hud';
@@ -11,8 +10,7 @@ const chick = createChick();
 stage.scene.add(chick.root);
 
 let world: WorldState;
-let office: THREE.Group | null = null;
-let animated: THREE.Object3D[] = [];
+let office: OfficeView | null = null;
 
 function seedFromUrl(): number | null {
   const raw = new URLSearchParams(window.location.search).get('seed');
@@ -27,12 +25,11 @@ function randomSeed(): number {
 
 function rebuildOffice(): void {
   if (office) {
-    stage.scene.remove(office);
-    disposeOffice(office);
+    stage.scene.remove(office.root);
+    office.dispose();
   }
   office = buildOffice(world.level);
-  animated = collectAnimated(office);
-  stage.scene.add(office);
+  stage.scene.add(office.root);
   stage.fitSun(world.level.size);
 }
 
@@ -117,8 +114,8 @@ function frame(now: number): void {
 
   const time = now / 1000;
   const player = world.player;
-  chick.update(player.x, player.z, player.facing, player.moving, time, dt);
-  animate(animated, time, dt);
+  chick.update(player.x, player.z, player.facing, player.moving, player.emotion, time, dt);
+  if (office?.update(world, time, dt)) stage.refreshShadows();
   stage.follow(player.x, player.z, dt);
   stage.render();
   requestAnimationFrame(frame);

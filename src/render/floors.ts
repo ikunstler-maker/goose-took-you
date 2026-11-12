@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { RoomType } from '../sim/prefabs';
-import { canvasTexture, noise } from './kit';
+import { canvasTexture, noise, withFog } from './kit';
 
 type Painter = (ctx: CanvasRenderingContext2D, size: number) => void;
 
@@ -130,8 +130,8 @@ const PAINTERS: Record<RoomType | 'corridor', Painter> = {
   },
 };
 
-/** Tiles per metre for each floor pattern. */
-const DENSITY: Record<RoomType | 'corridor', number> = {
+/** Texture repeats per metre for each floor pattern. */
+export const FLOOR_DENSITY: Record<RoomType | 'corridor', number> = {
   lobby: 0.34,
   buying: 0.5,
   copycat: 0.25,
@@ -146,18 +146,18 @@ const DENSITY: Record<RoomType | 'corridor', number> = {
 
 const cache = new Map<string, THREE.MeshLambertMaterial>();
 
-/** Floor material; cached per pattern and reused across office rebuilds. */
-export function floorMaterial(type: RoomType | 'corridor', sizeMetres: number): THREE.MeshLambertMaterial {
-  const key = `${type}:${sizeMetres}`;
-  let material = cache.get(key);
+/**
+ * Floor material, cached and reused across office rebuilds. Floor geometry
+ * carries world-space UVs scaled by FLOOR_DENSITY, so the texture just repeats.
+ */
+export function floorMaterial(type: RoomType | 'corridor'): THREE.MeshLambertMaterial {
+  let material = cache.get(type);
   if (!material) {
     const texture = canvasTexture(256, PAINTERS[type]);
     texture.wrapS = THREE.RepeatWrapping;
     texture.wrapT = THREE.RepeatWrapping;
-    const repeat = sizeMetres * DENSITY[type];
-    texture.repeat.set(repeat, repeat);
-    material = new THREE.MeshLambertMaterial({ map: texture });
-    cache.set(key, material);
+    material = withFog(new THREE.MeshLambertMaterial({ map: texture }));
+    cache.set(type, material);
   }
   return material;
 }

@@ -1,6 +1,7 @@
-// Fixed room interiors. Coordinates are local to the room centre:
-// x grows east, z grows south, the room spans -6..6 on both axes.
-// Doors sit at the middle of a side, so props stay clear of those approaches.
+// Fixed room hubs. Coordinates are local to the centre of the room's core
+// square: x grows east, z grows south, the core spans -6..6 on both axes.
+// The core is the north-west part of a room; the rest of the room shape and
+// its filler furniture are generated per match (see level.ts).
 
 export type RoomType =
   | 'lobby'
@@ -41,7 +42,21 @@ export type PropKind =
   | 'planter'
   | 'stool'
   | 'thermometer'
-  | 'stickerBoard';
+  | 'stickerBoard'
+  | 'bookshelf'
+  | 'lockers'
+  | 'cooler'
+  | 'printer'
+  | 'whiteboard'
+  | 'beanbag'
+  | 'rug'
+  | 'lamp'
+  | 'arcade'
+  | 'cabinet'
+  | 'palm'
+  | 'cactus'
+  | 'crates'
+  | 'ringLight';
 
 /** Quarter turns: 0 = front faces south (+z), 1 = east, 2 = north, 3 = west. */
 export type Rot = 0 | 1 | 2 | 3;
@@ -81,9 +96,9 @@ export const PREFABS: Record<RoomType, PrefabProp[]> = {
     p('bonsai', 0, 0, 1.1, 1.1),
     p('bonsai', -1.7, -1.2, 0.6, 0.6),
     p('bonsai', 1.7, -1.2, 0.6, 0.6),
-    p('tv', -3.7, -5.3, 3.8, 0.5),
+    p('tv', -3, -5.6, 5.4, 0.5),
     p('reception', 3.7, -4.4, 3, 1),
-    p('mirror', -5.4, 3.6, 0.4, 1.6, 1),
+    p('mirror', -5.7, 3.6, 1.6, 0.4, 1),
     p('monstera', 5, 5, 0.8, 0.8),
     p('ficus', -5, 5, 0.8, 0.8),
     p('ficus', 5, -2.6, 0.8, 0.8),
@@ -94,10 +109,10 @@ export const PREFABS: Record<RoomType, PrefabProp[]> = {
     p('deskBuyer', -3.6, 2.6, 2.2, 1),
     p('deskBuyer', 3.6, -2, 2.2, 1),
     p('deskBuyer', 3.6, 2.6, 2.2, 1),
-    p('stool', -3.6, -1, 0.5, 0.5, 0, false),
-    p('stool', -3.6, 3.6, 0.5, 0.5, 0, false),
-    p('stool', 3.6, -1, 0.5, 0.5, 0, false),
-    p('stool', 3.6, 3.6, 0.5, 0.5, 0, false),
+    p('stool', -3.6, -1, 0.5, 0.5),
+    p('stool', -3.6, 3.6, 0.5, 0.5),
+    p('stool', 3.6, -1, 0.5, 0.5),
+    p('stool', 3.6, 3.6, 0.5, 0.5),
     p('monstera', 5, -5, 0.8, 0.8),
     p('ficus', -5, 5, 0.8, 0.8),
     p('monstera', 5, 5, 0.8, 0.8),
@@ -107,16 +122,16 @@ export const PREFABS: Record<RoomType, PrefabProp[]> = {
     p('deskCopy', 3.6, -4.6, 2.4, 1),
     p('deskCopy', -3.6, 3, 2.4, 1),
     p('deskCopy', 3.6, 3, 2.4, 1),
-    p('stool', -3.6, -3.6, 0.5, 0.5, 0, false),
-    p('stool', 3.6, -3.6, 0.5, 0.5, 0, false),
-    p('planter', 0, 5.2, 2.6, 0.7, 0, false),
+    p('stool', -3.6, -3.6, 0.5, 0.5),
+    p('stool', 3.6, -3.6, 0.5, 0.5),
+    p('planter', 0, 5.2, 3.3, 0.8),
     p('ficus', -5, 5, 0.8, 0.8),
     p('monstera', 5, 5, 0.8, 0.8),
   ],
   news: [
     p('dualStation', 0, -0.2, 4.6, 1.4),
-    p('stool', -1.3, 1.1, 0.5, 0.5, 0, false),
-    p('stool', 1.3, 1.1, 0.5, 0.5, 0, false),
+    p('stool', -1.3, 1.1, 0.5, 0.5),
+    p('stool', 1.3, 1.1, 0.5, 0.5),
     p('desk', -4, -4.8, 2, 1),
     p('desk', 4, -4.8, 2, 1),
     ...corners('monstera').slice(2),
@@ -137,11 +152,11 @@ export const PREFABS: Record<RoomType, PrefabProp[]> = {
     p('ultrawide', -3.9, -4.6, 2.6, 1.1),
     p('ultrawide', -5, -2.4, 2.6, 1.1, 1),
     p('ultrawide', -3.9, 3.4, 2.6, 1.1),
-    p('stickerBoard', -1.5, -5.6, 1.8, 0.2, 0, false),
+    p('stickerBoard', -1.5, -5.6, 1.8, 0.3),
     p('rack', 2.6, -5.1, 1, 1),
     p('rack', 3.8, -5.1, 1, 1),
     p('rack', 5, -5.1, 1, 1),
-    p('thermometer', 5.6, -3, 0.2, 0.6, 3, false),
+    p('thermometer', 5.6, -3, 0.5, 0.3, 3),
     p('fan', 4.8, 3.8, 1.4, 1.4),
     p('monstera', -5, 5, 0.8, 0.8),
     p('ficus', 2.4, 5, 0.8, 0.8),
@@ -149,10 +164,10 @@ export const PREFABS: Record<RoomType, PrefabProp[]> = {
   meeting: [
     p('meetingTable', 0, 0, 3.4, 3.4),
     p('kanban', -3.7, -5.5, 3.2, 0.3),
-    p('stool', -2.4, 0, 0.5, 0.5, 0, false),
-    p('stool', 2.4, 0, 0.5, 0.5, 0, false),
-    p('stool', 0, -2.4, 0.5, 0.5, 0, false),
-    p('stool', 0, 2.4, 0.5, 0.5, 0, false),
+    p('stool', -2.4, 0, 0.5, 0.5),
+    p('stool', 2.4, 0, 0.5, 0.5),
+    p('stool', 0, -2.4, 0.5, 0.5),
+    p('stool', 0, 2.4, 0.5, 0.5),
     ...corners('ficus'),
   ],
   lounge: [
@@ -189,3 +204,30 @@ export const SHUFFLED_ROOMS: RoomType[] = [
   'lounge',
   'greenhouse',
 ];
+
+/** Filler furniture placed against walls; `w` runs along the wall, `d` into the room. */
+export interface Filler {
+  kind: PropKind;
+  w: number;
+  d: number;
+}
+
+const f = (kind: PropKind, w: number, d: number): Filler => ({ kind, w, d });
+
+const PLANTS: Filler[] = [f('monstera', 0.8, 0.8), f('ficus', 0.8, 0.8), f('palm', 0.9, 0.9), f('cactus', 0.7, 0.7)];
+
+export const FILLERS: Record<RoomType | 'corridor', Filler[]> = {
+  lobby: [f('sofa', 3.2, 1.1), f('bookshelf', 2, 0.6), f('lamp', 0.5, 0.5), f('palm', 0.9, 0.9), f('cooler', 0.6, 0.6), ...PLANTS],
+  buying: [f('deskBuyer', 2.2, 1), f('cabinet', 1, 0.6), f('whiteboard', 2, 0.4), f('cooler', 0.6, 0.6), f('lockers', 2, 0.6), ...PLANTS],
+  copycat: [f('deskCopy', 2.4, 1), f('bookshelf', 2, 0.6), f('printer', 1, 0.8), f('whiteboard', 2, 0.4), ...PLANTS],
+  news: [f('desk', 2, 1), f('ringLight', 0.7, 0.7), f('whiteboard', 2, 0.4), f('cabinet', 1, 0.6), f('printer', 1, 0.8), ...PLANTS],
+  cargo: [f('shelf', 3.4, 1), f('crates', 1.8, 1), f('lockers', 2, 0.6), f('box', 0.9, 0.9), f('crates', 1.8, 1), f('cactus', 0.7, 0.7)],
+  motion: [f('ultrawide', 2.6, 1.1), f('rack', 1, 1), f('bookshelf', 2, 0.6), f('beanbag', 0.9, 0.9), f('lamp', 0.5, 0.5), ...PLANTS],
+  meeting: [f('whiteboard', 2, 0.4), f('cabinet', 1, 0.6), f('lamp', 0.5, 0.5), f('bookshelf', 2, 0.6), f('cooler', 0.6, 0.6), ...PLANTS],
+  lounge: [f('sofa', 3.2, 1.1), f('arcade', 0.9, 0.9), f('beanbag', 0.9, 0.9), f('cooler', 0.6, 0.6), f('lamp', 0.5, 0.5), f('arcade', 0.9, 0.9), ...PLANTS],
+  greenhouse: [f('planter', 3.3, 0.8), f('bench', 2.6, 0.8), f('palm', 0.9, 0.9), f('planter', 3.3, 0.8), ...PLANTS, ...PLANTS],
+  corridor: [f('bench', 2.6, 0.8), f('cooler', 0.6, 0.6), f('lockers', 2, 0.6), f('printer', 1, 0.8), f('lamp', 0.5, 0.5), ...PLANTS, ...PLANTS],
+};
+
+/** Free-standing pieces dropped on a rug in open floor. */
+export const ISLAND_PIECES: PropKind[] = ['beanbag', 'coffeeTable', 'stool', 'beanbag'];

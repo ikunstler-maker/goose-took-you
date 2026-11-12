@@ -22,6 +22,7 @@ const CARDBOARD = mat(0xc99a62);
 const TAPE = mat(0xe8d3a8);
 
 const FAN_RING = new THREE.TorusGeometry(0.6, 0.05, 8, 28);
+const RING_LIGHT = new THREE.TorusGeometry(0.3, 0.04, 8, 28);
 
 const glow = (color: number): THREE.Material => mat(color, { emissive: color });
 
@@ -66,9 +67,8 @@ function leafBlob(r: number, material: THREE.Material, x: number, y: number, z: 
   return mesh;
 }
 
-/** Marks a part to sway in the wind; `main` animates these. */
-function sway<T extends THREE.Object3D>(object: T, amount = 0.05): T {
-  object.userData.sway = amount;
+/** Indoor plants stand still (no wind inside), so they merge into static chunk geometry. */
+function sway<T extends THREE.Object3D>(object: T, _amount = 0): T {
   return object;
 }
 
@@ -177,8 +177,11 @@ function fan(): THREE.Group {
   return group(cylinder(0.5, 0.56, 0.08, DARK, 0, 0.04, 0), cylinder(0.05, 0.05, 1.0, METAL, 0, 0.5, 0, 8), box(0.24, 0.24, 0.3, DARK, 0, 1.05, -0.06), ring, blades);
 }
 
-function sofa(): THREE.Group {
-  const fabric = mat(0xf7b7a3);
+const SOFA_COLORS = [0xf7b7a3, 0x9fc5e8, 0xb8dfa8, 0xd9b8f0];
+const ACCENTS = [0xff8f6b, 0x6bbcff, 0x7ed99a, 0xffcf5c];
+
+function sofa(variant: number): THREE.Group {
+  const fabric = mat(SOFA_COLORS[variant % 4]!);
   const cushion = mat(0xfde2cf);
   return group(
     box(3.2, 0.4, 1.1, fabric, 0, 0.3, 0),
@@ -203,9 +206,10 @@ function drawBrand(ctx: CanvasRenderingContext2D, w: number, h: number): void {
   ctx.fillStyle = '#5a3312';
   ctx.textBaseline = 'middle';
   ctx.font = `900 ${h * 0.24}px system-ui, sans-serif`;
-  ctx.fillText(t('decor.brand'), w * 0.36, h * 0.42);
+  // The last argument caps the text width so the name always fits the screen.
+  ctx.fillText(t('decor.brand'), w * 0.36, h * 0.42, w * 0.58);
   ctx.font = `600 ${h * 0.12}px system-ui, sans-serif`;
-  ctx.fillText(t('decor.brandSub'), w * 0.36, h * 0.66);
+  ctx.fillText(t('decor.brandSub'), w * 0.36, h * 0.66, w * 0.58);
 }
 
 function drawDashboard(ctx: CanvasRenderingContext2D, w: number, h: number): void {
@@ -277,7 +281,166 @@ function board(w: number, h: number, centreY: number, panel: THREE.Mesh): THREE.
   );
 }
 
-const BUILDERS: Record<PropKind, () => THREE.Group> = {
+function bookshelf(variant: number): THREE.Group {
+  const g = group(box(2, 1.9, 0.5, WOOD_DARK, 0, 0.95, -0.03));
+  const books = [0xff8f6b, 0x6bbcff, 0xffcf5c, 0x7ed99a, 0xd9b8f0, 0xf5efe6];
+  for (let row = 0; row < 4; row++) {
+    g.add(box(1.86, 0.04, 0.5, WOOD, 0, 0.2 + row * 0.44, 0.02));
+    let x = -0.86;
+    for (let i = 0; x < 0.8; i++) {
+      const w = 0.08 + ((i * 7 + row * 3 + variant) % 4) * 0.03;
+      const h = 0.24 + ((i * 5 + row + variant) % 3) * 0.05;
+      if ((i + row + variant) % 6 !== 5) g.add(box(w, h, 0.3, mat(books[(i + row * 2 + variant) % books.length]!), x + w / 2, 0.22 + row * 0.44 + h / 2, 0.1, false));
+      x += w + 0.02;
+    }
+  }
+  return g;
+}
+
+function lockers(variant: number): THREE.Group {
+  const g = group(box(2, 1.8, 0.56, METAL, 0, 0.9, 0));
+  const doors = [0xa9d6f5, 0xf7c6a3, 0xb8e0b0, 0xf2b8d0];
+  for (let i = 0; i < 4; i++) {
+    g.add(box(0.44, 1.66, 0.03, mat(doors[(i + variant) % 4]!), -0.75 + i * 0.5, 0.9, 0.285, false));
+    g.add(box(0.04, 0.12, 0.03, DARK, -0.6 + i * 0.5, 1.0, 0.31, false));
+    g.add(box(0.26, 0.02, 0.03, DARK, -0.75 + i * 0.5, 1.5, 0.305, false));
+    g.add(box(0.26, 0.02, 0.03, DARK, -0.75 + i * 0.5, 1.44, 0.305, false));
+  }
+  return g;
+}
+
+function palm(): THREE.Group {
+  const trunk = cylinder(0.05, 0.08, 1.3, WOOD_DARK, 0.06, 1.0, 0, 6);
+  trunk.rotation.z = -0.1;
+  const g = group(cylinder(0.3, 0.24, 0.4, POT, 0, 0.2, 0), cylinder(0.27, 0.27, 0.02, SOIL, 0, 0.4, 0), trunk);
+  for (let i = 0; i < 7; i++) {
+    const angle = (i / 7) * Math.PI * 2;
+    const frond = sphere(0.36, i % 2 ? LEAF : LEAF_LIGHT, 0, 0, 0);
+    frond.scale.set(1, 0.08, 0.32);
+    const arm = group(frond);
+    frond.position.set(0.32, 0, 0);
+    frond.rotation.z = -0.5;
+    arm.position.set(0.12, 1.66, 0);
+    arm.rotation.y = angle;
+    g.add(arm);
+  }
+  return g;
+}
+
+function cactus(variant: number): THREE.Group {
+  const green = mat(0x5fae6a);
+  const g = group(cylinder(0.24, 0.18, 0.3, mat(ACCENTS[variant % 4]!), 0, 0.15, 0), cylinder(0.13, 0.14, 0.8, green, 0, 0.7, 0, 10), sphere(0.13, green, 0, 1.1, 0));
+  g.add(cylinder(0.06, 0.06, 0.3, green, 0.2, 0.75, 0, 8), sphere(0.06, green, 0.2, 0.9, 0), box(0.14, 0.06, 0.06, green, 0.13, 0.62, 0));
+  g.add(cylinder(0.05, 0.05, 0.22, green, -0.19, 0.6, 0, 8), sphere(0.05, green, -0.19, 0.71, 0), box(0.12, 0.05, 0.05, green, -0.12, 0.5, 0));
+  g.add(sphere(0.05, glow(0xff7fb0), 0.03, 1.24, 0.02, 0));
+  return g;
+}
+
+function arcade(variant: number): THREE.Group {
+  const body = mat([0x7a5cff, 0xff5c8a, 0x2fb8a8, 0xff9a3d][variant % 4]!);
+  const scr = box(0.6, 0.46, 0.03, glow(0x7df9ff), 0, 1.32, 0.3, false);
+  scr.rotation.x = -0.25;
+  return group(
+    box(0.8, 1.9, 0.8, body, 0, 0.95, -0.03),
+    box(0.7, 0.56, 0.06, DARK, 0, 1.32, 0.34),
+    scr,
+    box(0.76, 0.06, 0.36, DARK, 0, 0.98, 0.42),
+    cylinder(0.02, 0.02, 0.12, METAL, -0.15, 1.07, 0.44, 6),
+    sphere(0.045, glow(0xff3b30), -0.15, 1.14, 0.44, 1),
+    sphere(0.035, glow(0xffe14d), 0.1, 1.03, 0.46, 0),
+    sphere(0.035, glow(0x4dff88), 0.22, 1.03, 0.42, 0),
+    box(0.72, 0.22, 0.03, glow(0xffe14d), 0, 1.76, 0.385, false),
+  );
+}
+
+function whiteboard(variant: number): THREE.Group {
+  const g = board(2, 1.1, 1.35, box(1.86, 0.96, 0.02, mat(0xffffff, { emissive: 0x8a8a8a }), 0, 0, 0, false));
+  const ink = [0xff5c5c, 0x3d8bff, 0x2fb86a, 0xff9a3d];
+  for (let i = 0; i < 5; i++) {
+    g.add(box(0.3 + ((i * 3 + variant) % 4) * 0.25, 0.04, 0.02, mat(ink[(i + variant) % 4]!), -0.35 + ((i + variant) % 3) * 0.18, 1.7 - i * 0.16, 0.08, false));
+  }
+  g.add(box(0.36, 0.3, 0.02, mat(0xfff07a), 0.62, 1.2, 0.08, false));
+  return g;
+}
+
+const BUILDERS: Record<PropKind, (variant: number) => THREE.Group> = {
+  bookshelf,
+  lockers,
+  palm,
+  cactus,
+  arcade,
+  whiteboard,
+
+  cooler: () =>
+    group(
+      box(0.44, 0.95, 0.44, WHITE, 0, 0.475, 0),
+      cylinder(0.17, 0.17, 0.42, mat(0x9fd8ff, { emissive: 0x2a6f9c }), 0, 1.18, 0, 14),
+      cylinder(0.08, 0.17, 0.08, mat(0x9fd8ff, { emissive: 0x2a6f9c }), 0, 0.99, 0, 14),
+      box(0.06, 0.06, 0.04, glow(0x4d9bff), -0.08, 0.7, 0.23, false),
+      box(0.06, 0.06, 0.04, glow(0xff5a4d), 0.08, 0.7, 0.23, false),
+    ),
+
+  printer: () =>
+    group(
+      box(0.9, 0.62, 0.7, WHITE, 0, 0.31, 0),
+      box(0.8, 0.26, 0.6, mat(0xd7dce4), 0, 0.75, 0),
+      box(0.5, 0.02, 0.36, mat(0xffffff, { emissive: 0x999999 }), 0, 0.9, 0.2, false),
+      box(0.16, 0.05, 0.02, glow(0x4dff88), 0.26, 0.78, 0.31, false),
+      box(0.8, 0.02, 0.02, DARK, 0, 0.42, 0.355, false),
+    ),
+
+  beanbag: (variant) => {
+    const bag = sphere(0.44, mat(ACCENTS[variant % 4]!), 0, 0.3, 0, 2);
+    bag.scale.set(1, 0.62, 1);
+    const dent = sphere(0.3, mat(ACCENTS[variant % 4]!), 0, 0.52, -0.12, 2);
+    dent.scale.set(1, 0.6, 0.8);
+    return group(bag, dent);
+  },
+
+  rug: (variant) => {
+    const base = cylinder(1.9, 1.9, 0.02, mat([0xf2c9a0, 0xb9d8f2, 0xcfe8b8, 0xf0c4dd][variant % 4]!), 0, 0.02, 0, 36);
+    base.scale.z = 0.72;
+    base.castShadow = false;
+    const inner = cylinder(1.4, 1.4, 0.02, mat(0xfff6e6), 0, 0.03, 0, 36);
+    inner.scale.z = 0.72;
+    inner.castShadow = false;
+    return group(base, inner);
+  },
+
+  lamp: (variant) =>
+    group(
+      cylinder(0.2, 0.22, 0.05, DARK, 0, 0.025, 0, 14),
+      cylinder(0.02, 0.02, 1.5, METAL, 0, 0.8, 0, 6),
+      cylinder(0.14, 0.24, 0.32, glow([0xfff0b8, 0xffd9a8, 0xe8f6ff, 0xffe9c7][variant % 4]!), 0, 1.66, 0, 14),
+    ),
+
+  cabinet: (variant) => {
+    const g = group(box(0.9, 1.15, 0.56, METAL, 0, 0.575, 0));
+    for (let i = 0; i < 3; i++) {
+      g.add(box(0.8, 0.32, 0.03, mat(0xdfe5ee), 0, 0.2 + i * 0.37, 0.285, false), box(0.24, 0.04, 0.03, DARK, 0, 0.26 + i * 0.37, 0.305, false));
+    }
+    g.add(box(0.4, 0.06, 0.3, mat(ACCENTS[variant % 4]!), -0.15, 1.18, 0), box(0.36, 0.05, 0.28, WHITE, -0.13, 1.235, 0.02));
+    return g;
+  },
+
+  crates: () => group(at(cardboardBox(0.8), -0.45, 0, 0, 0.1), at(cardboardBox(0.78), 0.45, 0, 0.05, -0.15), at(cardboardBox(0.6), -0.1, 0.8, 0, 0.4)),
+
+  ringLight: () => {
+    const ring = new THREE.Mesh(RING_LIGHT, glow(0xfff4d6));
+    ring.position.set(0, 1.55, 0);
+    ring.castShadow = true;
+    const g = group(cylinder(0.02, 0.02, 1.3, DARK, 0, 0.65, 0, 6), ring);
+    for (let i = 0; i < 3; i++) {
+      const leg = cylinder(0.015, 0.015, 0.5, DARK, 0, 0.2, 0, 5);
+      leg.rotation.z = 0.7;
+      const pivot = group(leg);
+      leg.position.set(0.15, 0.18, 0);
+      pivot.rotation.y = (i * Math.PI * 2) / 3;
+      g.add(pivot);
+    }
+    return g;
+  },
+
   desk: () => group(deskBase(2, 1), at(monitor(0.8, 0.5, 0x8fd3ff), 0, 0.8, -0.25), keyboard(0, 0.2)),
 
   deskBuyer: () => {
@@ -332,7 +495,7 @@ const BUILDERS: Record<PropKind, () => THREE.Group> = {
   },
 
   kanban: () => board(3.2, 1.5, 1.45, screen(3.05, 1.35, drawKanban, 0.2)),
-  tv: () => board(3.8, 2.0, 1.9, screen(3.6, 1.8, drawBrand, 0.7)),
+  tv: () => board(5.4, 2.6, 2.1, screen(5.2, 2.4, drawBrand, 0.7)),
   dashboard: () => board(4, 1.6, 1.6, screen(3.85, 1.45, drawDashboard, 0.75)),
   stickerBoard: () => board(1.8, 0.9, 1.25, screen(1.7, 0.8, drawSticker, 0.25)),
 
@@ -391,6 +554,6 @@ const BUILDERS: Record<PropKind, () => THREE.Group> = {
     ),
 };
 
-export function buildProp(kind: PropKind): THREE.Group {
-  return BUILDERS[kind]();
+export function buildProp(kind: PropKind, variant: number): THREE.Group {
+  return BUILDERS[kind](variant);
 }

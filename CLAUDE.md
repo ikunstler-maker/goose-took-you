@@ -29,10 +29,10 @@ Browser 3D isometric social-deduction game: chibi chicks vs an undercover goose 
 ## Architecture
 - Stack: Vite + TypeScript (strict) + Three.js, Vitest. Static site, no backend in v1. Desktop only (keyboard + mouse).
 - Invariants:
-  1. `src/sim/` is pure TS: no Three.js, DOM or `Math.random`; seeded RNG only. Rendering reads sim state, never owns it.
+  1. `src/sim/` is pure TS: no Three.js, DOM or `Math.random`; seeded RNG only. Rendering reads sim state, never owns it. Vision (what a player sees) is sim state.
   2. All gameplay changes go through sim commands/events; bots and a future network transport use the player's path.
   3. No external model, texture or audio files: procedural geometry, canvas textures, Web Audio synthesis.
-  4. Level = seed → slot grid → fixed room prefabs. Same seed gives the same office; prefab interiors never vary.
+  4. Level = seed → cell grid (1 m) → rooms, corridors, solid masses. Same seed gives the same office; each room's hub furniture never varies, its shape and filler do.
   5. Every user-visible string comes from `src/i18n/` (UA + RU, same key set).
   6. Tunables live in `src/config.ts` (e.g. `BOX_SLIP_CHANCE`), never inline.
 
