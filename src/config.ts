@@ -161,5 +161,47 @@ export const TELL_BUBBLE_RANGE = 2.2;
 export const TELL_VISIBLE_RANGE = 5;
 /** Bot Goose: a chick counts as alone when nobody else is this close to it, metres. */
 export const HUNT_ALONE_RADIUS = 7;
+/** Bot Goose sight: a cone this wide ahead of it, this deep, walls block it. Degrees, metres. */
+export const GOOSE_SIGHT_ANGLE = 100;
+export const GOOSE_SIGHT_RANGE = 7;
+/** Tunnel vision while the bot Goose pretends to work at a desk, degrees. */
+export const GOOSE_WORK_SIGHT_ANGLE = 45;
+/** Bot Goose remembers where it last saw its prey this long, seconds. */
+export const GOOSE_MEMORY = 8;
+/** Bot Goose does not hunt for this long after the match starts (and, from stage 4, after a meeting), seconds. */
+export const GOOSE_GRACE = 25;
+/** Bot Goose follows its prey this long before closing in, keeping this gap, seconds and metres. */
+export const GOOSE_STALK_MIN = 2;
+export const GOOSE_STALK_MAX = 4;
+export const GOOSE_STALK_GAP = 3;
+/** While stalking, the bot Goose stops for PAUSE_MIN..PAUSE_MAX seconds about every PAUSE_EVERY seconds. */
+export const GOOSE_PAUSE_MIN = 0.5;
+export const GOOSE_PAUSE_MAX = 1;
+export const GOOSE_PAUSE_EVERY = 1.2;
+/** Chance the bot Goose drops a stalk when the prey turns to it or someone else comes near. */
+export const GOOSE_ABORT_CHANCE = 0.25;
+/** Chance it drops a stalk for no reason at all («та ну, ліньки»). */
+export const GOOSE_WHIM_CHANCE = 0.1;
+/** The prey «turned around»: it faces the Goose within this angle from this close, degrees and metres. */
+export const GOOSE_SPOTTED_ANGLE = 50;
+export const GOOSE_SPOTTED_RANGE = 5;
+/** After a pack the bot Goose plays a model worker for this long, seconds. */
+export const GOOSE_ALIBI_MIN = 20;
+export const GOOSE_ALIBI_MAX = 35;
+/** After a dropped hunt, a shorter spell of it, seconds. */
+export const GOOSE_DROP_ALIBI_MIN = 3;
+export const GOOSE_DROP_ALIBI_MAX = 6;
+/** It stands at each desk this long during the alibi, seconds. */
+export const GOOSE_FAKE_MIN = 4;
+export const GOOSE_FAKE_MAX = 8;
+/** Right after a pack the bot Goose freezes this long, seconds. */
+export const GOOSE_PACK_FREEZE = 1.2;
+/** Early in the match the bot Goose may wave a heart at a lone chick instead of packing it. Seconds, chance. */
+export const GOOSE_TRUST_WINDOW = 90;
+export const GOOSE_TRUST_CHANCE = 0.3;
+/** It shows the heart from this close, metres. */
+export const GOOSE_TRUST_RANGE = 3;
+/** A thought bubble over a participant lasts this long, seconds. */
+export const THOUGHT_TIME = 1.6;
 /** Bot chicks walk over to report a vacation box they see this close, metres. */
 export const BOT_REPORT_SIGHT = 8;

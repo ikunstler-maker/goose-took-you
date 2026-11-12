@@ -14,6 +14,7 @@ import {
   TELL_MAX,
   TELL_MIN,
   TELL_TIME,
+  THOUGHT_TIME,
   PLAYER_RADIUS,
   PLAYER_SPEED,
   SPAWN_SPACING,
@@ -38,6 +39,9 @@ import { computeVisibility } from './vision';
 
 /** What the chick's face shows; driven by what just happened to it. */
 export type Emotion = 'calm' | 'happy' | 'dizzy' | 'surprised' | 'bored';
+
+/** A short thought bubble over a participant's head; the text lives in i18n. */
+export type Thought = 'doubt' | 'meh' | 'heart' | 'busy';
 
 /** What `interact` would do right now; drives the on-screen hint. */
 export type Prompt =
@@ -66,6 +70,9 @@ export interface Participant {
   canPack: number | null;
   /** Vacation box that `report` would report right now. */
   canReport: number | null;
+  /** Thought bubble shown now, and its seconds left. */
+  thought: Thought | null;
+  thoughtTime: number;
   /** Index into CHICK_COLORS. */
   color: number;
   /** Index into ACCESSORIES. */
@@ -132,7 +139,9 @@ export type Command =
   /** Goose: pack the chick within reach into a «ГАРЯЧА ВІДПУСТКА» box. */
   | { type: 'pack' }
   /** Report the vacation box within reach. Meetings follow in stage 4. */
-  | { type: 'report' };
+  | { type: 'report' }
+  /** Show a short thought bubble for THOUGHT_TIME seconds. */
+  | { type: 'think'; thought: Thought };
 
 export type SimEvent =
   | { type: 'roomChanged'; who: number; roomId: number | null }
@@ -223,6 +232,8 @@ export function createWorld(
     tellBubble: false,
     canPack: null,
     canReport: null,
+    thought: null,
+    thoughtTime: 0,
     color: 0,
     accessory: 0,
     x: spot.x,
@@ -304,6 +315,11 @@ export function applyCommand(state: WorldState, who: number, command: Command): 
       return state.phase === 'play' ? pack(state, actor) : [];
     case 'report':
       return state.phase === 'play' ? report(state, actor) : [];
+    case 'think':
+      if (state.phase !== 'play' || !actor.alive) return [];
+      actor.thought = command.thought;
+      actor.thoughtTime = THOUGHT_TIME;
+      return [];
     case 'finishTask':
     case 'cancelTask': {
       if (actor.activeTask === null) return [];
@@ -499,6 +515,8 @@ function stepParticipant(state: WorldState, p: Participant, dt: number, events: 
   p.moving = state.phase === 'play' && p.alive && p.activeTask === null && (p.moveX !== 0 || p.moveZ !== 0);
   p.bumpCooldown = Math.max(0, p.bumpCooldown - dt);
   p.emotionTime = Math.max(0, p.emotionTime - dt);
+  p.thoughtTime = Math.max(0, p.thoughtTime - dt);
+  if (p.thoughtTime === 0 || !p.alive) p.thought = null;
 
   if (p.moving) {
     p.facing = Math.atan2(p.moveX, p.moveZ);

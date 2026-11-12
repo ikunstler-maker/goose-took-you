@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { PACK_COOLDOWN, PARTICIPANTS, TELL_MAX, TELL_TIME, TICK } from '../config';
-import { applyCommand, createWorld, LOCAL_PLAYER, me, progress, step, type Role, type SimEvent, type WorldState } from './world';
+import {
+  GOOSE_ALIBI_MIN,
+  GOOSE_GRACE,
+  GOOSE_MEMORY,
+  GOOSE_PACK_FREEZE,
+  PACK_COOLDOWN,
+  PARTICIPANTS,
+  TELL_MAX,
+  TELL_TIME,
+  THOUGHT_TIME,
+  TICK,
+} from '../config';
+import { gooseSees } from './bots';
+import { applyCommand, createWorld, LOCAL_PLAYER, me, progress, step, type Participant, type Role, type SimEvent, type WorldState } from './world';
 
 function started(seed: number, role: Role | null = null): WorldState {
   const state = createWorld(seed, undefined, role);
@@ -147,12 +159,91 @@ describe('winning', () => {
     let packs = 0;
     for (const seed of [3, 42, 99]) {
       const state = started(seed, 'chick');
+      const goose = state.participants.find((p) => p.role === 'goose')!;
       for (let t = 0; t < 900 && state.phase === 'play'; t += TICK) {
-        packs += step(state, TICK).filter((e) => e.type === 'packed').length;
+        const packed = step(state, TICK).filter((e) => e.type === 'packed').length;
+        if (packed > 0) {
+          // Never during the grace period; then a freeze and a model-worker spell.
+          expect(t).toBeGreaterThanOrEqual(GOOSE_GRACE);
+          expect(goose.brain!.wait).toBeCloseTo(GOOSE_PACK_FREEZE, 5);
+          expect(goose.brain!.alibi).toBeGreaterThan(GOOSE_ALIBI_MIN - 1);
+        }
+        packs += packed;
       }
       expect(state.phase, `seed ${seed}`).toBe('over');
       winners.push(state.winner!);
     }
     expect(packs).toBeGreaterThan(0);
   }, 120_000);
+});
+
+/** A started match with a bot Goose, every other bot frozen in place. */
+function quietGoose(seed: number): { state: WorldState; goose: Participant } {
+  const state = started(seed, 'chick');
+  for (const p of state.participants) if (p.role !== 'goose') p.brain = null;
+  const goose = state.participants.find((p) => p.role === 'goose')!;
+  return { state, goose };
+}
+
+describe('bot Goose', () => {
+  it('does not hunt during the grace period', () => {
+    for (const seed of [3, 42]) {
+      const state = started(seed, 'chick');
+      const goose = state.participants.find((p) => p.role === 'goose')!;
+      for (let t = 0; t < GOOSE_GRACE - 0.5; t += TICK) {
+        expect(step(state, TICK).some((e) => e.type === 'packed')).toBe(false);
+        expect(goose.brain!.prey).toBeNull();
+      }
+    }
+  });
+
+  it('sees only ahead, and less while posing at a desk', () => {
+    const { state, goose } = quietGoose(42);
+    const chick = state.participants.find((p) => p.role === 'chick' && p.id !== LOCAL_PLAYER)!;
+    goose.x = state.level.spawn.x;
+    goose.z = state.level.spawn.z;
+    goose.facing = 0;
+    chick.x = goose.x;
+    chick.z = goose.z + 2;
+    expect(gooseSees(state, goose, chick)).toBe(true);
+    chick.z = goose.z - 2;
+    expect(gooseSees(state, goose, chick)).toBe(false);
+    // 40° off its heading: inside the 100° cone, outside the 45° tunnel.
+    chick.x = goose.x + 2 * Math.sin((40 * Math.PI) / 180);
+    chick.z = goose.z + 2 * Math.cos((40 * Math.PI) / 180);
+    expect(gooseSees(state, goose, chick)).toBe(true);
+    goose.brain!.fake = 3;
+    expect(gooseSees(state, goose, chick)).toBe(false);
+  });
+
+  it('forgets prey it has not seen for a while', () => {
+    const { state, goose } = quietGoose(42);
+    const brain = goose.brain!;
+    brain.calm = 0;
+    const prey = state.participants.find((p) => p.role === 'chick' && p.id !== LOCAL_PLAYER)!;
+    brain.prey = prey.id;
+    brain.preyX = goose.x;
+    brain.preyZ = goose.z;
+    // Everyone huddles far away, out of sight: no lone chick to switch to either.
+    const far = state.level.rooms.reduce((a, b) =>
+      Math.hypot(b.cx - goose.x, b.cz - goose.z) > Math.hypot(a.cx - goose.x, a.cz - goose.z) ? b : a,
+    );
+    for (const p of state.participants) {
+      if (p === goose) continue;
+      p.x = far.cx;
+      p.z = far.cz;
+    }
+    for (let t = 0; t < GOOSE_MEMORY - 1; t += TICK) step(state, TICK);
+    expect(brain.prey).toBe(prey.id);
+    for (let t = 0; t < 1.5; t += TICK) step(state, TICK);
+    expect(brain.prey).toBeNull();
+  });
+
+  it('shows a thought bubble for a while', () => {
+    const state = started(42, 'chick');
+    applyCommand(state, 2, { type: 'think', thought: 'doubt' });
+    expect(state.participants[2]!.thought).toBe('doubt');
+    for (let t = 0; t < THOUGHT_TIME + 0.1; t += TICK) step(state, TICK);
+    expect(state.participants[2]!.thought).toBeNull();
+  });
 });
