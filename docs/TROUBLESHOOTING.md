@@ -77,4 +77,20 @@ Entry format (≤8 lines):
 - Verify: `npx vitest run src/sim`; debug by printing `blocked()` on a 0.5 m grid around the break.
 - Seen: 2026-11-12
 
+## Mini-games
+
+### Mini-game won but never closes
+- Symptom: counter shows the target (e.g. «15 / 15») but the «Готово!» banner never appears and the task stays undone.
+- Root cause: the win check compared status before/after `tick`, but the winning move came from input between ticks.
+- Fix: views report `ctx.win()` from `draw()` behind a `reported` flag (`src/minigames/modus/view.ts`).
+- Verify: headless playthrough reaches `done: true` for every task.
+- Seen: 2026-11-12
+
+### Headless playthrough times out
+- Symptom: Playwright script waits forever for a mini-game to finish in the cloud.
+- Root cause: no GPU; SwiftShader renders ~4× slower than real time, and the fixed-step sim follows the frame rate (dt clamp 0.1 s).
+- Fix: poll DOM state instead of fixed waits; wait for `#minigame` to be hidden; allow minutes, not seconds.
+- Verify: measure `__goose.world().tick` over 3 s (≈0.24 sim s per real s here).
+- Seen: 2026-11-12
+
 ## CI

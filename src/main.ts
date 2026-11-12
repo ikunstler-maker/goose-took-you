@@ -1,8 +1,10 @@
 import { TICK } from './config';
+import { createMinigameHost } from './minigames/host';
 import { createChick } from './render/chick';
+import { createTaskMarkers, type TaskMarkers } from './render/markers';
 import { buildOffice, type OfficeView } from './render/office';
 import { createStage } from './render/stage';
-import { applyCommand, createWorld, step, type WorldState } from './sim/world';
+import { applyCommand, createWorld, step, type Command, type SimEvent, type WorldState } from './sim/world';
 import { createHud } from './ui/hud';
 
 const stage = createStage(document.getElementById('game') as HTMLCanvasElement);
@@ -11,6 +13,7 @@ stage.scene.add(chick.root);
 
 let world: WorldState;
 let office: OfficeView | null = null;
+let markers: TaskMarkers | null = null;
 
 function seedFromUrl(): number | null {
   const raw = new URLSearchParams(window.location.search).get('seed');
@@ -30,16 +33,58 @@ function rebuildOffice(): void {
   }
   office = buildOffice(world.level);
   stage.scene.add(office.root);
+  if (markers) {
+    stage.scene.remove(markers.root);
+    markers.dispose();
+  }
+  markers = createTaskMarkers(world);
+  stage.scene.add(markers.root);
   stage.fitSun(world.level.size);
 }
 
 const hud = createHud({
   onNewOffice: () => startOffice(randomSeed()),
   // Decor signs carry text, so the office is redrawn in the new language.
-  onLangChange: rebuildOffice,
+  onLangChange: () => {
+    rebuildOffice();
+    minigames.relabel();
+  },
 });
 
+const minigames = createMinigameHost({
+  onWin: () => send({ type: 'finishTask' }),
+  onCancel: () => send({ type: 'cancelTask' }),
+});
+
+function handle(events: SimEvent[]): void {
+  for (const event of events) {
+    switch (event.type) {
+      case 'roomChanged':
+        hud.setRoom(event.roomId === null ? null : world.level.rooms[event.roomId]!.type);
+        break;
+      case 'taskOpened':
+        minigames.open(event.kind, event.seed);
+        hud.setTasks(world);
+        break;
+      case 'taskClosed':
+        hud.setTasks(world);
+        markers?.refresh(world);
+        break;
+      case 'reachChanged':
+        hud.setTasks(world);
+        break;
+      case 'bumped':
+        break;
+    }
+  }
+}
+
+function send(command: Command): void {
+  handle(applyCommand(world, command));
+}
+
 function startOffice(seed: number): void {
+  minigames.close();
   world = createWorld(seed);
   rebuildOffice();
   stage.focus(world.player.x, world.player.z);
@@ -48,6 +93,7 @@ function startOffice(seed: number): void {
   window.history.replaceState(null, '', url);
   hud.setSeed(seed);
   hud.setRoom(world.roomId === null ? null : world.level.rooms[world.roomId]!.type);
+  hud.setTasks(world);
 }
 
 // --- Input: screen-relative movement for the isometric camera ---
@@ -74,10 +120,14 @@ function sendMove(): void {
     }
   }
   // Camera yaw is 45°: screen-right is (+x, -z), screen-up is (-x, -z).
-  applyCommand(world, { type: 'move', x: right - up, z: -right - up });
+  send({ type: 'move', x: right - up, z: -right - up });
 }
 
 window.addEventListener('keydown', (event) => {
+  if (event.code === 'KeyE' && !event.repeat && !minigames.isOpen()) {
+    send({ type: 'interact' });
+    return;
+  }
   if (!(event.code in KEYS)) return;
   event.preventDefault();
   held.add(event.code);
@@ -104,11 +154,8 @@ function frame(now: number): void {
   last = now;
   accumulator += dt;
   while (accumulator >= TICK) {
-    for (const event of step(world, TICK)) {
-      if (event.type === 'roomChanged') {
-        hud.setRoom(event.roomId === null ? null : world.level.rooms[event.roomId]!.type);
-      }
-    }
+    handle(step(world, TICK));
+    minigames.tick(TICK);
     accumulator -= TICK;
   }
 
@@ -116,6 +163,7 @@ function frame(now: number): void {
   const player = world.player;
   chick.update(player.x, player.z, player.facing, player.moving, player.emotion, time, dt);
   if (office?.update(world, time, dt)) stage.refreshShadows();
+  markers?.update(time);
   stage.follow(player.x, player.z, dt);
   stage.render();
   requestAnimationFrame(frame);

@@ -113,3 +113,384 @@ button:hover {
   pointer-events: none;
   white-space: nowrap;
 }
+
+/* --- Tasks --- */
+#progress {
+  position: fixed;
+  top: 76px;
+  left: 12px;
+  width: 260px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: 0 4px 14px rgba(90, 60, 10, 0.18);
+  font-size: 13px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+#progress .bar {
+  margin-top: 6px;
+  height: 12px;
+  border-radius: 999px;
+  background: #eadcbc;
+  overflow: hidden;
+}
+
+#progress .fill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, #7be05a, #3fbf4a);
+  transition: width 0.5s;
+}
+
+#tasks {
+  position: fixed;
+  top: 140px;
+  left: 12px;
+  width: 260px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: 0 4px 14px rgba(90, 60, 10, 0.18);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+#tasks h2 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+
+#tasks ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+#tasks li {
+  margin: 3px 0;
+}
+
+#tasks li.done {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
+#prompt {
+  position: fixed;
+  bottom: 52px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: #fff8e6;
+  font-weight: 800;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* --- Mini-game window --- */
+#minigame {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(40, 28, 10, 0.35);
+}
+
+#minigame[hidden],
+#prompt[hidden] {
+  display: none;
+}
+
+.mg-panel {
+  position: relative;
+  width: min(760px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  padding: 14px 18px 18px;
+  border-radius: 18px;
+  background: #fffaee;
+  box-shadow: 0 10px 40px rgba(40, 28, 10, 0.4);
+  user-select: none;
+}
+
+.mg-panel header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.mg-panel h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.mg-hint {
+  margin-left: auto;
+  font-size: 12px;
+  opacity: 0.65;
+}
+
+.mg-goal {
+  margin: 6px 0 10px;
+  font-size: 14px;
+}
+
+.mg-banner {
+  display: none;
+  position: absolute;
+  inset: 0;
+  place-items: center;
+  border-radius: 18px;
+  background: rgba(123, 224, 90, 0.82);
+  font-size: 40px;
+  font-weight: 900;
+}
+
+.mg-panel.won .mg-banner {
+  display: grid;
+}
+
+/* Modus */
+.modus-stats {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.modus-meter {
+  flex: 1;
+  height: 14px;
+  border-radius: 999px;
+  background: #eadcbc;
+  overflow: hidden;
+}
+
+.modus-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #ffc93d, #ff5d5d);
+}
+
+.modus-board {
+  position: relative;
+  height: 360px;
+  margin-top: 10px;
+  border-radius: 12px;
+  background: #2c2440;
+  overflow: hidden;
+}
+
+.modus-timeline {
+  position: absolute;
+  left: 16px;
+  right: 130px;
+  bottom: 16px;
+  height: 70px;
+  display: grid;
+  gap: 4px;
+  color: #cfc4ff;
+  font-size: 12px;
+}
+
+.modus-timeline i {
+  display: block;
+  height: 10px;
+  border-radius: 4px;
+  background: #5b4bb0;
+}
+
+.modus-timeline i:nth-child(2n) {
+  width: 70%;
+  background: #3fc3ff;
+}
+
+.modus-bin {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  width: 100px;
+  height: 90px;
+  display: grid;
+  place-items: center;
+  border: 3px dashed #8f83c9;
+  border-radius: 12px;
+  color: #e6e0ff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.modus-bin.hot {
+  border-color: #7be05a;
+  background: rgba(123, 224, 90, 0.18);
+}
+
+.modus-bin-icon {
+  width: 30px;
+  height: 34px;
+  border: 3px solid #e6e0ff;
+  border-top-width: 6px;
+  border-radius: 2px 2px 6px 6px;
+}
+
+.modus-sticker {
+  position: absolute;
+  width: 160px;
+  min-height: 68px;
+  padding: 10px 26px 10px 10px;
+  border-radius: 4px;
+  background: #fff07a;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+  font-size: 13px;
+  font-weight: 700;
+  transform: rotate(var(--tilt));
+  cursor: grab;
+  animation: pop 0.15s ease-out;
+}
+
+.modus-sticker.drag {
+  z-index: 2;
+  cursor: grabbing;
+  transform: rotate(0deg) scale(1.05);
+}
+
+.modus-sticker button {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 6px;
+  background: #ff5d5d;
+  color: #fff;
+  line-height: 1;
+}
+
+.modus-lost {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 93, 93, 0.6);
+  color: #fff;
+  font-size: 22px;
+  font-weight: 900;
+  text-align: center;
+  padding: 20px;
+}
+
+.modus-lost[hidden] {
+  display: none;
+}
+
+@keyframes pop {
+  from {
+    transform: rotate(var(--tilt)) scale(0.6);
+  }
+}
+
+/* Copycat */
+.copycat-boards {
+  display: flex;
+  gap: 18px;
+  justify-content: center;
+}
+
+.copycat-board {
+  padding: 10px;
+  border-radius: 12px;
+  background: #1f2b2a;
+  color: #dff;
+  text-align: center;
+}
+
+.copycat-board.reference {
+  background: #2c2440;
+}
+
+.copycat-board h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+
+.copycat-board svg {
+  display: block;
+  touch-action: none;
+}
+
+.copycat .node.right {
+  fill: #e9f3f2;
+}
+
+.copycat .yours .node.left {
+  cursor: grab;
+}
+
+.copycat .symbol {
+  font-size: 13px;
+  fill: #1f2b2a;
+  pointer-events: none;
+}
+
+.copycat .wire {
+  fill: none;
+  stroke-width: 6;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+
+.copycat .wire.ghost {
+  opacity: 0.6;
+  stroke-dasharray: 8 6;
+}
+
+.copycat-switches {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.copycat .switch {
+  width: 46px;
+  height: 24px;
+  padding: 0;
+  border-radius: 999px;
+  background: #556;
+  position: relative;
+}
+
+.copycat .switch::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  transition: left 0.15s;
+}
+
+.copycat .switch.on {
+  background: #7be05a;
+}
+
+.copycat .switch.on::after {
+  left: 25px;
+}
+
+.copycat .switch:disabled {
+  cursor: default;
+  filter: none;
+}
+
+.copycat-match {
+  margin-top: 10px;
+  text-align: center;
+  font-weight: 800;
+  font-size: 16px;
+}

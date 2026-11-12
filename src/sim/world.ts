@@ -7,6 +7,7 @@ import {
   SURPRISED_TIME,
 } from '../config';
 import { blocked, buildBuckets, generateLevel, roomAt, type Buckets, type Level } from './level';
+import { assignTasks, findStations, taskInReach, type Station, type Task, type TaskKind } from './tasks';
 import { computeVisibility } from './vision';
 
 /** What the chick's face shows; driven by what just happened to it. */
@@ -39,14 +40,35 @@ export interface WorldState {
   visible: Uint8Array;
   /** Bumped whenever `visible` is recomputed. */
   visibleVersion: number;
+  stations: Station[];
+  tasks: Task[];
+  /** Task the player could start with `interact` right now. */
+  reachableTask: number | null;
+  /** Task whose mini-game is open; the chick stands still meanwhile, the office does not. */
+  activeTask: number | null;
   tick: number;
 }
 
-export type Command = { type: 'move'; x: number; z: number };
-export type SimEvent = { type: 'roomChanged'; roomId: number | null } | { type: 'bumped' };
+export type Command =
+  | { type: 'move'; x: number; z: number }
+  | { type: 'interact' }
+  | { type: 'finishTask' }
+  | { type: 'cancelTask' };
+
+export type SimEvent =
+  | { type: 'roomChanged'; roomId: number | null }
+  | { type: 'bumped' }
+  | { type: 'reachChanged'; taskId: number | null }
+  /** `seed` feeds the mini-game's own RNG so a round is reproducible. */
+  | { type: 'taskOpened'; taskId: number; kind: TaskKind; seed: number }
+  | { type: 'taskClosed'; taskId: number; done: boolean };
+
+/** Local player id until roles and bots arrive in stage 3. */
+export const LOCAL_PLAYER = 0;
 
 export function createWorld(seed: number): WorldState {
   const level = generateLevel(seed);
+  const stations = findStations(level);
   const state: WorldState = {
     level,
     buckets: buildBuckets(level),
@@ -66,23 +88,50 @@ export function createWorld(seed: number): WorldState {
     roomId: roomAt(level, level.spawn.x, level.spawn.z)?.id ?? null,
     visible: new Uint8Array(level.size * level.size),
     visibleVersion: 1,
+    stations,
+    tasks: assignTasks(stations, seed, LOCAL_PLAYER),
+    reachableTask: null,
+    activeTask: null,
     tick: 0,
   };
   computeVisibility(level, state.player.x, state.player.z, state.visible);
   return state;
 }
 
-export function applyCommand(state: WorldState, command: Command): void {
-  const length = Math.hypot(command.x, command.z);
-  state.player.moveX = length > 1e-6 ? command.x / length : 0;
-  state.player.moveZ = length > 1e-6 ? command.z / length : 0;
+/** Applies a command; returns events it caused immediately. */
+export function applyCommand(state: WorldState, command: Command): SimEvent[] {
+  switch (command.type) {
+    case 'move': {
+      const length = Math.hypot(command.x, command.z);
+      state.player.moveX = length > 1e-6 ? command.x / length : 0;
+      state.player.moveZ = length > 1e-6 ? command.z / length : 0;
+      return [];
+    }
+    case 'interact': {
+      if (state.activeTask !== null || state.reachableTask === null) return [];
+      const task = state.tasks[state.reachableTask]!;
+      if (task.done) return [];
+      state.activeTask = task.id;
+      const seed = ((state.level.seed * 31 + task.id * 997 + state.tick) >>> 0) || 1;
+      return [{ type: 'taskOpened', taskId: task.id, kind: task.kind, seed }];
+    }
+    case 'finishTask':
+    case 'cancelTask': {
+      if (state.activeTask === null) return [];
+      const task = state.tasks[state.activeTask]!;
+      const done = command.type === 'finishTask';
+      if (done) task.done = true;
+      state.activeTask = null;
+      return [{ type: 'taskClosed', taskId: task.id, done }];
+    }
+  }
 }
 
 export function step(state: WorldState, dt: number): SimEvent[] {
   const events: SimEvent[] = [];
   const player = state.player;
   const { level, buckets } = state;
-  player.moving = player.moveX !== 0 || player.moveZ !== 0;
+  player.moving = state.activeTask === null && (player.moveX !== 0 || player.moveZ !== 0);
   player.bumpCooldown = Math.max(0, player.bumpCooldown - dt);
   player.emotionTime = Math.max(0, player.emotionTime - dt);
 
@@ -129,6 +178,12 @@ export function step(state: WorldState, dt: number): SimEvent[] {
       player.emotion = 'surprised';
       player.emotionTime = SURPRISED_TIME;
     }
+  }
+
+  const reach = taskInReach(level, state.stations, state.tasks, LOCAL_PLAYER, player.x, player.z)?.id ?? null;
+  if (reach !== state.reachableTask) {
+    state.reachableTask = reach;
+    events.push({ type: 'reachChanged', taskId: reach });
   }
 
   if (player.emotionTime === 0) {
