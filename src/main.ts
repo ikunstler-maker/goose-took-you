@@ -11,6 +11,7 @@ import { applyCommand, createWorld, LOCAL_PLAYER, me, step, type Command, type R
 import { createHud } from './ui/hud';
 import { createLobby } from './ui/lobby';
 import { createMatchScreens } from './ui/match';
+import { createMeetingView } from './ui/meeting';
 import { loadSettings, saveSettings } from './ui/settings';
 
 const settings = loadSettings();
@@ -69,6 +70,7 @@ const hud = createHud({
     minigames.relabel();
     lobby.relabel();
     screens.relabel(world);
+    meeting.relabel();
   },
 });
 
@@ -81,6 +83,8 @@ const lobby = createLobby({
   },
   onStart: () => send({ type: 'start' }),
 });
+
+const meeting = createMeetingView({ onVote: (target) => send({ type: 'vote', target }) });
 
 const minigames = createMinigameHost({
   onWin: () => send({ type: 'finishTask' }),
@@ -97,6 +101,18 @@ function handle(events: SimEvent[]): void {
     // A report is news for the whole office, whoever made it.
     if (event.type === 'reported') {
       hud.shout('hud.reported', { color: t(`look.color.${world.participants[event.victim]!.color}` as I18nKey) });
+    }
+    if (event.type === 'meetingStarted') {
+      minigames.close();
+      held.clear();
+      hud.setTasks(world);
+      markers?.refresh(world);
+    }
+    if (event.type === 'meetingEnded') {
+      meeting.hide();
+      hud.setTasks(world);
+      markers?.refresh(world);
+      if (event.ejected === LOCAL_PLAYER) screens.showPacked(world);
     }
     if (event.type === 'packed') {
       if (event.victim === LOCAL_PLAYER) {
@@ -128,6 +144,7 @@ function handle(events: SimEvent[]): void {
         break;
       case 'gameOver':
         minigames.close();
+        meeting.hide();
         held.clear();
         screens.showOver(world);
         break;
@@ -144,6 +161,11 @@ function handle(events: SimEvent[]): void {
         break;
       case 'bumped':
       case 'broadcastStarted':
+      case 'meetingStarted':
+      case 'meetingStage':
+      case 'meetingEnded':
+      case 'chat':
+      case 'voted':
         break;
     }
   }
@@ -161,6 +183,7 @@ function roleFromUrl(): Role | null {
 
 function startOffice(seed: number): void {
   minigames.close();
+  meeting.hide();
   screens.hideAll();
   const look = loadSettings();
   world = createWorld(seed, { color: look.color, accessory: look.accessory }, roleFromUrl());
@@ -249,6 +272,8 @@ function frame(now: number): void {
     if (world.tick % 15 === 0 && me(world).canPack !== null) hud.setTasks(world);
     accumulator -= TICK;
   }
+
+  if (world.phase === 'meeting') meeting.update(world);
 
   const time = now / 1000;
   const player = me(world);

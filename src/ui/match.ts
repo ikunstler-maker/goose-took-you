@@ -34,8 +34,8 @@ export function createMatchScreens(handlers: { onNewMatch(): void }): MatchScree
       bannerText.textContent = t(self.role === 'goose' ? 'role.gooseHint' : 'role.chickHint');
     } else if (bannerKind === 'packed') {
       banner.classList.remove('goose');
-      bannerTitle.textContent = t('box.vacation');
-      bannerText.textContent = t('hud.packedYou');
+      bannerTitle.textContent = self.ejected ? t('meeting.out.ejected') : t('box.vacation');
+      bannerText.textContent = t(self.ejected ? 'hud.ejectedYou' : 'hud.packedYou');
     }
   };
 
@@ -47,7 +47,7 @@ export function createMatchScreens(handlers: { onNewMatch(): void }): MatchScree
     over.classList.toggle('goose', world.winner === 'goose');
     (over.querySelector('h2') as HTMLElement).textContent = t(world.winner === 'goose' ? 'over.goose' : 'over.chicks');
     (over.querySelector('.over-you') as HTMLElement).textContent = t(won ? 'over.youWin' : 'over.youLose');
-    (over.querySelector('.over-reason') as HTMLElement).textContent = t(world.winner === 'goose' ? 'over.reasonPacked' : 'over.reasonTasks');
+    (over.querySelector('.over-reason') as HTMLElement).textContent = t(world.winner === 'goose' ? 'over.reasonPacked' : goose.alive ? 'over.reasonTasks' : 'over.reasonEjected');
     (over.querySelector('.over-goose') as HTMLElement).textContent = t('over.gooseWas', {
       color: t(`look.color.${goose.color}` as I18nKey),
     });

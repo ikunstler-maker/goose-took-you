@@ -1,6 +1,10 @@
 import {
   ACCESSORIES,
   BORED_AFTER,
+  BUTTON_COOLDOWN,
+  BUTTON_USES,
+  GOOSE_GRACE,
+  INTERACT_RANGE,
   CHICK_COLORS,
   DIZZY_COOLDOWN,
   DIZZY_TIME,
@@ -35,6 +39,7 @@ import {
   type Task,
   type TaskKind,
 } from './tasks';
+import { castVote, meetingTable, notePack, startMeeting, stepMeeting, type Meeting } from './meeting';
 import { computeVisibility } from './vision';
 
 /** What the chick's face shows; driven by what just happened to it. */
@@ -47,7 +52,9 @@ export type Thought = 'doubt' | 'meh' | 'heart' | 'busy';
 export type Prompt =
   | { kind: 'task'; task: number }
   | { kind: 'pickup'; box: number }
-  | { kind: 'deliver'; task: number };
+  | { kind: 'deliver'; task: number }
+  /** The red «ТЕРМІНОВИЙ СОЗВОН» button on the meeting table. */
+  | { kind: 'button' };
 
 /** A chick, or the Goose disguised as one. */
 export type Role = 'chick' | 'goose';
@@ -57,8 +64,12 @@ export interface Participant {
   id: number;
   isBot: boolean;
   role: Role;
-  /** False once packed into a «ГАРЯЧА ВІДПУСТКА» box. */
+  /** False once packed into a «ГАРЯЧА ВІДПУСТКА» box or voted out. */
   alive: boolean;
+  /** Voted out at a meeting (rather than packed). */
+  ejected: boolean;
+  /** Red button presses left this match. */
+  buttonUses: number;
   /** Goose only: seconds until the next pack is allowed. */
   packCooldown: number;
   /** Goose only: seconds left of the neck stretch, and until the next one. */
@@ -103,7 +114,7 @@ export interface Participant {
 }
 
 /** Match phase. The lobby is where the player picks a look before the start. */
-export type Phase = 'lobby' | 'play' | 'over';
+export type Phase = 'lobby' | 'play' | 'meeting' | 'over';
 export type Winner = 'chicks' | 'goose';
 
 export interface WorldState {
@@ -123,6 +134,10 @@ export interface WorldState {
   /** Seconds left of «Екстрені Новини» on the Lobby screen; 0 when off. */
   broadcast: number;
   winner: Winner | null;
+  /** The meeting in progress, or null. */
+  meeting: Meeting | null;
+  /** Seconds until the red button can be pressed again. */
+  buttonCooldown: number;
   /** Debug/testing: the local player's role at the start instead of a random one. */
   forcedRole: Role | null;
   tick: number;
@@ -141,7 +156,9 @@ export type Command =
   /** Report the vacation box within reach. Meetings follow in stage 4. */
   | { type: 'report' }
   /** Show a short thought bubble for THOUGHT_TIME seconds. */
-  | { type: 'think'; thought: Thought };
+  | { type: 'think'; thought: Thought }
+  /** At a meeting: vote for a participant id, or SKIP_VOTE. */
+  | { type: 'vote'; target: number };
 
 export type SimEvent =
   | { type: 'roomChanged'; who: number; roomId: number | null }
@@ -159,6 +176,12 @@ export type SimEvent =
   | { type: 'started' }
   | { type: 'packed'; who: number; victim: number; boxId: number }
   | { type: 'reported'; who: number; boxId: number; victim: number }
+  | { type: 'meetingStarted'; who: number; victim: number | null }
+  /** The meeting moved to voting or to the result card. */
+  | { type: 'meetingStage' }
+  | { type: 'chat'; who: number }
+  | { type: 'voted'; who: number }
+  | { type: 'meetingEnded'; ejected: number | null }
   | { type: 'gameOver'; winner: Winner };
 
 /** The participant this browser controls. */
@@ -226,6 +249,8 @@ export function createWorld(
     isBot: id !== LOCAL_PLAYER,
     role: 'chick',
     alive: true,
+    ejected: false,
+    buttonUses: BUTTON_USES,
     packCooldown: 0,
     tell: 0,
     tellIn: 0,
@@ -271,6 +296,8 @@ export function createWorld(
     boxes: [],
     broadcast: 0,
     winner: null,
+    meeting: null,
+    buttonCooldown: BUTTON_COOLDOWN,
     forcedRole,
     tick: 0,
   };
@@ -315,6 +342,8 @@ export function applyCommand(state: WorldState, who: number, command: Command): 
       return state.phase === 'play' ? pack(state, actor) : [];
     case 'report':
       return state.phase === 'play' ? report(state, actor) : [];
+    case 'vote':
+      return state.phase === 'meeting' ? castVote(state, actor, command.target) : [];
     case 'think':
       if (state.phase !== 'play' || !actor.alive) return [];
       actor.thought = command.thought;
@@ -350,6 +379,7 @@ function pack(state: WorldState, actor: Participant): SimEvent[] {
   if (actor.role !== 'goose' || !actor.alive || actor.packCooldown > 0 || actor.canPack === null) return [];
   const victim = state.participants[actor.canPack]!;
   if (!victim.alive || victim.role === 'goose') return [];
+  notePack(state, actor, victim);
   victim.alive = false;
   victim.moving = false;
   victim.moveX = 0;
@@ -386,7 +416,8 @@ function report(state: WorldState, actor: Participant): SimEvent[] {
   if (!box || box.reported) return [];
   box.reported = true;
   actor.canReport = null;
-  return [{ type: 'reported', who: actor.id, boxId: box.id, victim: box.inside! }];
+  const events: SimEvent[] = [{ type: 'reported', who: actor.id, boxId: box.id, victim: box.inside! }];
+  return events.concat(startMeeting(state, actor, box.inside!));
 }
 
 /** Vacation box ids sit above every task id. */
@@ -413,7 +444,8 @@ function checkWin(state: WorldState, events: SimEvent[]): void {
   const chicks = state.participants.filter((p) => p.alive && p.role === 'chick').length;
   const geese = state.participants.filter((p) => p.alive && p.role === 'goose').length;
   let winner: Winner | null = null;
-  if (geese > 0 && chicks <= geese) winner = 'goose';
+  if (geese === 0) winner = 'chicks';
+  else if (chicks <= geese) winner = 'goose';
   else if (progress(state) >= 1) winner = 'chicks';
   if (!winner) return;
   state.phase = 'over';
@@ -441,6 +473,10 @@ function completeTask(state: WorldState, actor: Participant, task: Task): SimEve
 function interact(state: WorldState, actor: Participant): SimEvent[] {
   const prompt = actor.prompt;
   if (actor.activeTask !== null || prompt === null) return [];
+  if (prompt.kind === 'button') {
+    actor.buttonUses--;
+    return startMeeting(state, actor, null);
+  }
   if (prompt.kind === 'deliver') {
     const task = state.tasks[prompt.task]!;
     state.boxes = state.boxes.filter((b) => b.id !== actor.carrying);
@@ -489,7 +525,15 @@ function computePrompt(state: WorldState, actor: Participant): Prompt | null {
   const box = boxInReach(state.boxes, actor.x, actor.z);
   if (box) return { kind: 'pickup', box: box.id };
   const task = taskInReach(state.level, state.stations, state.tasks, actor.id, actor.x, actor.z);
-  return task ? { kind: 'task', task: task.id } : null;
+  if (task) return { kind: 'task', task: task.id };
+  return canPressButton(state, actor) ? { kind: 'button' } : null;
+}
+
+/** Next to the meeting table, with a press left and the button cooled down. */
+function canPressButton(state: WorldState, actor: Participant): boolean {
+  if (!actor.alive || actor.buttonUses <= 0 || state.buttonCooldown > 0) return false;
+  const table = meetingTable(state);
+  return table !== null && Math.hypot(actor.x - table.x, actor.z - table.z) <= table.radius + INTERACT_RANGE;
 }
 
 const samePrompt = (a: Prompt | null, b: Prompt | null): boolean => JSON.stringify(a) === JSON.stringify(b);
@@ -604,12 +648,34 @@ function stepParticipant(state: WorldState, p: Participant, dt: number, events: 
   }
 }
 
+/** Back to work: a fresh grace period for the Goose and a button cooldown for everyone. */
+function endMeeting(state: WorldState, events: SimEvent[]): void {
+  const ejected = state.meeting!.ejected;
+  state.meeting = null;
+  state.phase = 'play';
+  state.buttonCooldown = BUTTON_COOLDOWN;
+  for (const p of state.participants) {
+    if (p.role !== 'goose') continue;
+    p.packCooldown = Math.max(p.packCooldown, PACK_COOLDOWN);
+    if (p.brain) {
+      p.brain.calm = GOOSE_GRACE;
+      p.brain.alibi = 0;
+    }
+  }
+  events.push({ type: 'meetingEnded', ejected });
+}
+
 export function step(state: WorldState, dt: number): SimEvent[] {
   const events: SimEvent[] = [];
   const send = (who: number, command: Command): SimEvent[] => applyCommand(state, who, command);
+  if (state.phase === 'meeting') {
+    const vote = (who: number, target: number): SimEvent[] => applyCommand(state, who, { type: 'vote', target });
+    if (stepMeeting(state, dt, vote, events)) endMeeting(state, events);
+  }
   for (const p of state.participants) if (p.brain) events.push(...thinkBot(state, state.nav, p, dt, send));
   for (const p of state.participants) stepParticipant(state, p, dt, events);
   state.broadcast = Math.max(0, state.broadcast - dt);
+  if (state.phase === 'play') state.buttonCooldown = Math.max(0, state.buttonCooldown - dt);
   checkWin(state, events);
   state.tick++;
   return events;
