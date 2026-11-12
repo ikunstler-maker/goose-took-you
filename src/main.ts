@@ -2,16 +2,22 @@ import { TICK } from './config';
 import { createMinigameHost } from './minigames/host';
 import { createBoxes } from './render/boxes';
 import { createBroadcast, type BroadcastView } from './render/broadcast';
-import { createChick } from './render/chick';
+import { createChicks } from './render/chicks';
 import { createTaskMarkers, type TaskMarkers } from './render/markers';
 import { buildOffice, type OfficeView } from './render/office';
 import { createStage } from './render/stage';
-import { applyCommand, createWorld, step, type Command, type SimEvent, type WorldState } from './sim/world';
+import { setLang } from './i18n';
+import { applyCommand, createWorld, LOCAL_PLAYER, me, step, type Command, type SimEvent, type WorldState } from './sim/world';
 import { createHud } from './ui/hud';
+import { createLobby } from './ui/lobby';
+import { loadSettings, saveSettings } from './ui/settings';
+
+const settings = loadSettings();
+setLang(settings.lang);
 
 const stage = createStage(document.getElementById('game') as HTMLCanvasElement);
-const chick = createChick();
-stage.scene.add(chick.root);
+const chicks = createChicks();
+stage.scene.add(chicks.root);
 const boxes = createBoxes();
 stage.scene.add(boxes.root);
 
@@ -56,10 +62,20 @@ function rebuildOffice(): void {
 const hud = createHud({
   onNewOffice: () => startOffice(randomSeed()),
   // Decor signs carry text, so the office is redrawn in the new language.
-  onLangChange: () => {
+  onLangChange: (lang) => {
+    saveSettings({ lang });
     rebuildOffice();
     minigames.relabel();
+    lobby.relabel();
   },
+});
+
+const lobby = createLobby({
+  onLook: (color, accessory) => {
+    saveSettings({ color, accessory });
+    send({ type: 'setLook', color, accessory });
+  },
+  onStart: () => send({ type: 'start' }),
 });
 
 const minigames = createMinigameHost({
@@ -69,12 +85,21 @@ const minigames = createMinigameHost({
 
 function handle(events: SimEvent[]): void {
   for (const event of events) {
+    // The HUD and windows follow the local player; other participants act silently for now.
+    if ('who' in event && event.who !== LOCAL_PLAYER) continue;
     switch (event.type) {
       case 'roomChanged':
         hud.setRoom(event.roomId === null ? null : world.level.rooms[event.roomId]!.type);
         break;
       case 'taskOpened':
         minigames.open(event.kind, event.seed);
+        hud.setTasks(world);
+        break;
+      case 'looksChanged':
+        chicks.rebuild(world);
+        break;
+      case 'started':
+        lobby.hide();
         hud.setTasks(world);
         break;
       case 'taskClosed':
@@ -96,19 +121,23 @@ function handle(events: SimEvent[]): void {
 }
 
 function send(command: Command): void {
-  handle(applyCommand(world, command));
+  handle(applyCommand(world, LOCAL_PLAYER, command));
 }
 
 function startOffice(seed: number): void {
   minigames.close();
-  world = createWorld(seed);
+  const look = loadSettings();
+  world = createWorld(seed, { color: look.color, accessory: look.accessory });
   rebuildOffice();
-  stage.focus(world.player.x, world.player.z);
+  chicks.rebuild(world);
+  lobby.show(me(world).color, me(world).accessory);
+  stage.focus(me(world).x, me(world).z);
   const url = new URL(window.location.href);
   url.searchParams.set('seed', String(seed));
   window.history.replaceState(null, '', url);
   hud.setSeed(seed);
-  hud.setRoom(world.roomId === null ? null : world.level.rooms[world.roomId]!.type);
+  const roomId = me(world).roomId;
+  hud.setRoom(roomId === null ? null : world.level.rooms[roomId]!.type);
   hud.setTasks(world);
 }
 
@@ -176,8 +205,8 @@ function frame(now: number): void {
   }
 
   const time = now / 1000;
-  const player = world.player;
-  chick.update(player.x, player.z, player.facing, player.moving, player.emotion, time, dt);
+  const player = me(world);
+  chicks.update(world, time, dt);
   if (office?.update(world, time, dt)) stage.refreshShadows();
   markers?.update(time);
   boxes.update(world, time);

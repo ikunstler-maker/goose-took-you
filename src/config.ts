@@ -111,3 +111,16 @@ export const LINES_MIN_LENGTH = 30;
 export const LINES_HIT_RADIUS = 12;
 /** How long the pleased client stays on screen before the task closes, seconds. */
 export const LINES_CLIENT_PAUSE = 1.8;
+
+/** Participants in a match: the player and bots. */
+export const PARTICIPANTS = 8;
+/**
+ * Chick colours, in SPEC order: sunny yellow, pastel pink, mint, lavender,
+ * sky, peach, cream, pistachio. i18n keys `look.color.<index>`.
+ */
+export const CHICK_COLORS: readonly number[] = [0xffd84a, 0xffa8c5, 0x8fe3c2, 0xc3a8f5, 0x8fcbff, 0xffb98a, 0xf6ead0, 0xc5e08a];
+/** Accessories, in SPEC order. i18n keys `look.accessory.<name>`. */
+export const ACCESSORIES = ['headphones', 'cap', 'glasses', 'crown', 'sprout', 'coffee'] as const;
+export type Accessory = (typeof ACCESSORIES)[number];
+/** Distance between chicks lined up at the spawn, metres. */
+export const SPAWN_SPACING = 1.5;

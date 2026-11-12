@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { Accessory } from '../config';
 import type { Emotion } from '../sim/world';
 import { box, cone, cylinder, mat, smoothSphere, sphere } from './kit';
 
@@ -8,12 +9,89 @@ export interface ChickView {
 }
 
 const ARC = new THREE.TorusGeometry(0.11, 0.028, 8, 16, Math.PI);
+const BAND = new THREE.TorusGeometry(0.53, 0.045, 8, 24, Math.PI);
+const LENS_RIM = new THREE.TorusGeometry(0.15, 0.022, 8, 20);
+
+/** Hat-like accessories sit where the tufts are, so the tufts hide under them. */
+const COVERS_TUFT: readonly Accessory[] = ['cap', 'coffee', 'crown'];
+
+/** Head-mounted accessory, in head-local coordinates (head centre at the origin, radius 0.5). */
+function buildAccessory(kind: Accessory): THREE.Group {
+  const g = new THREE.Group();
+  switch (kind) {
+    case 'headphones': {
+      const dark = mat(0x2d2f3a);
+      const band = new THREE.Mesh(BAND, dark);
+      band.rotation.y = Math.PI / 2;
+      band.rotation.z = 0;
+      band.position.y = 0.02;
+      g.add(band);
+      for (const side of [-1, 1]) {
+        const cup = cylinder(0.15, 0.15, 0.12, mat(0xff6fa0), side * 0.5, 0, 0, 16);
+        cup.rotation.z = Math.PI / 2;
+        g.add(cup);
+      }
+      break;
+    }
+    case 'cap': {
+      const red = mat(0xe5433d);
+      const dome = smoothSphere(0.44, red, 0, 0.18, -0.02);
+      dome.scale.set(1, 0.62, 1);
+      // Worn backwards: the brim points behind the chick.
+      g.add(dome, box(0.5, 0.04, 0.32, red, 0, 0.2, -0.52), sphere(0.05, mat(0xffffff), 0, 0.46, -0.02, 1));
+      break;
+    }
+    case 'glasses': {
+      const rim = mat(0x3f7bff);
+      const lens = mat(0xbfe6ff, { opacity: 0.45 });
+      for (const side of [-1, 1]) {
+        const ring = new THREE.Mesh(LENS_RIM, rim);
+        ring.position.set(side * 0.2, 0.06, 0.5);
+        const glass = cylinder(0.14, 0.14, 0.01, lens, side * 0.2, 0.06, 0.5, 16);
+        glass.rotation.x = Math.PI / 2;
+        g.add(ring, glass);
+      }
+      g.add(box(0.12, 0.03, 0.03, rim, 0, 0.08, 0.52));
+      break;
+    }
+    case 'crown': {
+      const gold = mat(0xffcf3a, { emissive: 0x8a5a00 });
+      g.add(cylinder(0.24, 0.26, 0.16, gold, 0, 0.5, 0, 12));
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2;
+        g.add(cone(0.06, 0.16, gold, Math.sin(a) * 0.22, 0.65, Math.cos(a) * 0.22));
+      }
+      g.add(sphere(0.05, mat(0xe5433d, { emissive: 0x6a0000 }), 0, 0.5, 0.26, 1));
+      break;
+    }
+    case 'sprout': {
+      const leaf = mat(0x5cc05a);
+      g.add(cylinder(0.025, 0.03, 0.28, mat(0x3f9c4d), 0, 0.62, 0, 6));
+      for (const side of [-1, 1]) {
+        const l = smoothSphere(0.1, leaf, side * 0.1, 0.76, 0);
+        l.scale.set(1.2, 0.45, 0.7);
+        l.rotation.z = side * -0.5;
+        g.add(l);
+      }
+      break;
+    }
+    case 'coffee': {
+      g.add(
+        cylinder(0.15, 0.12, 0.28, mat(0xfbf7ef), 0, 0.6, 0, 16),
+        cylinder(0.152, 0.138, 0.1, mat(0xb07a4a), 0, 0.58, 0, 16),
+        cylinder(0.16, 0.16, 0.04, mat(0x3a2a14), 0, 0.76, 0, 16),
+      );
+      break;
+    }
+  }
+  return g;
+}
 const SHADOW = new THREE.CircleGeometry(0.42, 24).rotateX(-Math.PI / 2);
 
 /** Chibi chick: a huge head on a tiny body, with a goofy face per emotion. */
-export function createChick(color = 0xffd84a): ChickView {
+export function createChick(color = 0xffd84a, accessory: Accessory | null = null): ChickView {
   const body = mat(color);
-  const wingMat = mat(0xf2c23a);
+  const wingMat = mat(new THREE.Color(color).multiplyScalar(0.88).getHex());
   const orange = mat(0xff9a2e);
   const black = mat(0x1d1a22);
   const white = mat(0xffffff, { emissive: 0xdddddd });
@@ -57,11 +135,14 @@ export function createChick(color = 0xffd84a): ChickView {
   head.position.set(0, 0.92, 0.02);
   bob.add(head);
   head.add(smoothSphere(0.5, body, 0, 0, 0));
-  for (const [x, lean] of [[-0.08, 0.4], [0, 0], [0.08, -0.4]] as const) {
-    const tuft = cone(0.05, 0.2, body, x, 0.56, 0);
-    tuft.rotation.z = lean;
-    head.add(tuft);
+  if (!accessory || !COVERS_TUFT.includes(accessory)) {
+    for (const [x, lean] of [[-0.08, 0.4], [0, 0], [0.08, -0.4]] as const) {
+      const tuft = cone(0.05, 0.2, body, x, 0.56, 0);
+      tuft.rotation.z = lean;
+      head.add(tuft);
+    }
   }
+  if (accessory) head.add(buildAccessory(accessory));
   for (const side of [-1, 1]) {
     const cheek = smoothSphere(0.08, pink, side * 0.33, -0.1, 0.36);
     cheek.scale.set(1, 0.6, 0.4);

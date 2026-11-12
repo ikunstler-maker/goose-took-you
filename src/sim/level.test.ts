@@ -3,7 +3,14 @@ import { BORED_AFTER, CORE, MAP, PLAYER_RADIUS, TICK } from '../config';
 import { blocked, buildBuckets, CORRIDOR, FLOOR, generateLevel, GLASS, roomAt, SOLID, type Level } from './level';
 import { SHUFFLED_ROOMS } from './prefabs';
 import { computeVisibility } from './vision';
-import { applyCommand, createWorld, step } from './world';
+import { applyCommand, createWorld as createLobby, LOCAL_PLAYER, me, step } from './world';
+
+/** A world past the lobby, ready to play. */
+function createWorld(seed: number) {
+  const state = createLobby(seed);
+  applyCommand(state, LOCAL_PLAYER, { type: 'start' });
+  return state;
+}
 
 const CELL = 0.5;
 
@@ -164,26 +171,26 @@ describe('world', () => {
   it('stops the player at walls and furniture', () => {
     const state = createWorld(7);
     for (const [x, z] of [[1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, -1]] as const) {
-      applyCommand(state, { type: 'move', x, z });
+      applyCommand(state, LOCAL_PLAYER, { type: 'move', x, z });
       for (let i = 0; i < 900; i++) {
         step(state, TICK);
-        expect(blocked(state.level, state.buckets, state.player.x, state.player.z, PLAYER_RADIUS - 1e-6)).toBe(false);
+        expect(blocked(state.level, state.buckets, me(state).x, me(state).z, PLAYER_RADIUS - 1e-6)).toBe(false);
       }
     }
   });
 
   it('normalises diagonal movement', () => {
     const state = createWorld(7);
-    applyCommand(state, { type: 'move', x: 3, z: 3 });
-    expect(Math.hypot(state.player.moveX, state.player.moveZ)).toBeCloseTo(1);
+    applyCommand(state, LOCAL_PLAYER, { type: 'move', x: 3, z: 3 });
+    expect(Math.hypot(me(state).moveX, me(state).moveZ)).toBeCloseTo(1);
   });
 
   it('changes emotion with the situation', () => {
     const state = createWorld(7);
-    expect(state.player.emotion).toBe('calm');
-    applyCommand(state, { type: 'move', x: 0, z: 1 });
+    expect(me(state).emotion).toBe('calm');
+    applyCommand(state, LOCAL_PLAYER, { type: 'move', x: 0, z: 1 });
     step(state, TICK);
-    expect(state.player.emotion).toBe('happy');
+    expect(me(state).emotion).toBe('happy');
 
     // Keep running until something is in the way.
     const events = [];
@@ -191,10 +198,10 @@ describe('world', () => {
       events.push(...step(state, TICK).filter((event) => event.type === 'bumped'));
     }
     expect(events).toHaveLength(1);
-    expect(state.player.emotion).toBe('dizzy');
+    expect(me(state).emotion).toBe('dizzy');
 
-    applyCommand(state, { type: 'move', x: 0, z: 0 });
+    applyCommand(state, LOCAL_PLAYER, { type: 'move', x: 0, z: 0 });
     for (let i = 0; i < (BORED_AFTER + 1) / TICK; i++) step(state, TICK);
-    expect(state.player.emotion).toBe('bored');
+    expect(me(state).emotion).toBe('bored');
   });
 });
