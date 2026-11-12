@@ -124,3 +124,20 @@ export const ACCESSORIES = ['headphones', 'cap', 'glasses', 'crown', 'sprout', '
 export type Accessory = (typeof ACCESSORIES)[number];
 /** Distance between chicks lined up at the spawn, metres. */
 export const SPAWN_SPACING = 1.5;
+
+/** Bots. Grid resolution for path finding, metres. */
+export const NAV_STEP = 0.5;
+/** Seconds a bot spends "doing" a window task, picked between the two. */
+export const BOT_TASK_MIN = 4;
+export const BOT_TASK_MAX = 9;
+/** Pause after arriving somewhere while wandering, seconds. */
+export const BOT_IDLE_MIN = 1.5;
+export const BOT_IDLE_MAX = 5;
+/** Delay before a bot moves after the start, picked up to this many seconds. */
+export const BOT_START_DELAY = 2.5;
+/** A bot that moved less than this in one second is stuck and re-plans, metres. */
+export const BOT_STUCK_DISTANCE = 0.25;
+/** A bot that stands at its goal without the matching prompt this long gives up for now, seconds. */
+export const BOT_GIVE_UP = 2;
+/** How long a bot leaves a task alone after giving up on it, seconds. */
+export const BOT_AVOID_TIME = 20;

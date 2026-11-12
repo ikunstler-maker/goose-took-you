@@ -77,6 +77,13 @@ Entry format (≤8 lines):
 - Verify: `npx vitest run src/sim`; debug by printing `blocked()` on a 0.5 m grid around the break.
 - Seen: 2026-11-12
 
+### Bot stuck at a corner, re-planning forever
+- Symptom: a bot stands still with a goal and a path; `left` tasks never finish in the bot test.
+- Root cause: nav cells use a small margin, and a waypoint counted as reached 0.3 m early, so the bot cut a corner into a plant or desk and slid to a halt.
+- Fix: waypoint reach 0.12 m; straight shortcuts checked with real collision (`fitsIn`, radius +0.08); start re-centred on a free cell (`src/sim/nav.ts`, `bots.ts`).
+- Verify: bot completion sweep over many seeds; dump `blocked()` on a 0.25 m grid around the bot.
+- Seen: 2026-11-12
+
 ## Mini-games
 
 ### New hub prop breaks reachability
