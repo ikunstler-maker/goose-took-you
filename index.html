@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Гусь тебе побрав</title>
+    <link rel="stylesheet" href="/src/ui/style.css" />
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+    <header id="topbar">
+      <strong id="title"></strong>
+      <span id="seed"></span>
+      <button id="new-office" type="button"></button>
+      <div id="lang" role="group">
+        <button type="button" data-lang="ua">UA</button>
+        <button type="button" data-lang="ru">RU</button>
+      </div>
+    </header>
+    <div id="room-name"></div>
+    <footer id="controls"></footer>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

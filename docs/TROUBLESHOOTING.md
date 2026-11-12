@@ -26,6 +26,20 @@ Entry format (≤8 lines):
 
 ## Render
 
+### Object.assign on an Object3D breaks the page
+- Symptom: `TypeError: Cannot assign to read only property 'position' of object`; blank canvas, `window.__goose` undefined.
+- Root cause: `position`, `rotation`, `scale` of a Three.js `Object3D` are read-only properties; they cannot be replaced.
+- Fix: mutate them (`object.position.set(x, y, z)`), never assign or `Object.assign`.
+- Verify: Playwright run prints no page errors.
+- Seen: 2026-11-12
+
+### Headless screenshot check of the game
+- Symptom: need to verify visuals without a GPU.
+- Root cause: cloud container has no GPU; WebGL needs the software renderer.
+- Fix: `npm run build`, `npx vite preview --port 4173`, launch Chromium with `--use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist`; read state via `window.__goose.world()`.
+- Verify: screenshot shows the office; frame rate there says nothing about real hardware.
+- Seen: 2026-11-12
+
 ## Sim
 
 ## CI
