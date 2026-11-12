@@ -9,13 +9,38 @@ import {
   BOT_STUCK_DISTANCE,
   BOT_TASK_MAX,
   BOT_TASK_MIN,
+  GOOSE_ABORT_CHANCE,
+  GOOSE_ALIBI_MAX,
+  GOOSE_ALIBI_MIN,
+  GOOSE_DROP_ALIBI_MAX,
+  GOOSE_DROP_ALIBI_MIN,
+  GOOSE_FAKE_MAX,
+  GOOSE_FAKE_MIN,
+  GOOSE_GRACE,
+  GOOSE_MEMORY,
+  GOOSE_PACK_FREEZE,
+  GOOSE_PAUSE_EVERY,
+  GOOSE_PAUSE_MAX,
+  GOOSE_PAUSE_MIN,
+  GOOSE_SIGHT_ANGLE,
+  GOOSE_SIGHT_RANGE,
+  GOOSE_SPOTTED_ANGLE,
+  GOOSE_SPOTTED_RANGE,
+  GOOSE_STALK_GAP,
+  GOOSE_STALK_MAX,
+  GOOSE_STALK_MIN,
+  GOOSE_TRUST_CHANCE,
+  GOOSE_TRUST_RANGE,
+  GOOSE_TRUST_WINDOW,
+  GOOSE_WHIM_CHANCE,
+  GOOSE_WORK_SIGHT_ANGLE,
   INTERACT_RANGE,
 } from '../config';
 import { cellCentre, findPath, fitsIn, nearestFree, type NavGrid } from './nav';
 import { createRng, type Rng } from './rng';
 import { stationDistance, WINDOW_TASKS } from './tasks';
 import { canSee } from './vision';
-import type { Command, Participant, SimEvent, WorldState } from './world';
+import type { Command, Participant, SimEvent, Thought, WorldState } from './world';
 
 /** What a bot is heading for. */
 export type Goal =
@@ -25,6 +50,8 @@ export type Goal =
   | { kind: 'wander' }
   /** Goose: stalk a lone chick. */
   | { kind: 'hunt'; target: number }
+  /** Goose: stand at one of its own desks pretending to work. */
+  | { kind: 'pose'; task: number }
   /** Chick: walk over to a vacation box it saw. */
   | { kind: 'report'; box: number };
 
@@ -48,6 +75,31 @@ export interface Brain {
   /** A task given up on for a while (someone else's box in the way, etc.). */
   avoid: number | null;
   avoidLeft: number;
+  /** Goose only. Seconds of play so far. */
+  age: number;
+  /** Seconds left before hunting is allowed (match start; meetings from stage 4). */
+  calm: number;
+  /** Seconds left of playing a model worker after a pack or a dropped hunt. */
+  alibi: number;
+  /** Seconds left standing at a desk; the Goose has tunnel vision meanwhile. */
+  fake: number;
+  /** Desk task the Goose poses at next. */
+  poseTask: number | null;
+  /** Chick being stalked, where the Goose last saw it, and seconds since. */
+  prey: number | null;
+  preyX: number;
+  preyZ: number;
+  preyUnseen: number;
+  /** Seconds of keeping a distance left; 0 means closing in. */
+  stalk: number;
+  /** Seconds until the next hesitation stop. */
+  pauseIn: number;
+  /** `stalk` value at which the Goose drops the hunt for no reason; -1 for never. */
+  abortAt: number;
+  /** The prey turned or a third one came; the Goose rolled on it once already. */
+  spooked: boolean;
+  /** This stalk ends with a heart instead of a pack. */
+  bait: boolean;
 }
 
 export function createBrain(rng: Rng): Brain {
@@ -63,6 +115,20 @@ export function createBrain(rng: Rng): Brain {
     atGoal: 0,
     avoid: null,
     avoidLeft: 0,
+    age: 0,
+    calm: GOOSE_GRACE,
+    alibi: 0,
+    fake: 0,
+    poseTask: null,
+    prey: null,
+    preyX: 0,
+    preyZ: 0,
+    preyUnseen: 0,
+    stalk: 0,
+    pauseIn: 0,
+    abortAt: -1,
+    spooked: false,
+    bait: false,
   };
 }
 
@@ -114,16 +180,43 @@ function unwatched(state: WorldState, goose: Participant, victim: Participant): 
   );
 }
 
-/** A living chick with nobody else around it, nearest first; null when none. */
+/** Angle between a heading and the direction from (ax, az) to (bx, bz), degrees. */
+function offHeading(facing: number, ax: number, az: number, bx: number, bz: number): number {
+  const along = Math.sin(facing) * (bx - ax) + Math.cos(facing) * (bz - az);
+  const across = Math.cos(facing) * (bx - ax) - Math.sin(facing) * (bz - az);
+  return Math.abs(Math.atan2(across, along)) * (180 / Math.PI);
+}
+
+/** The bot Goose sees someone: inside its cone (any direction for its tracked prey), close enough, no wall between. */
+export function gooseSees(state: WorldState, goose: Participant, other: Participant, tracking = false): boolean {
+  const cone = goose.brain && goose.brain.fake > 0 ? GOOSE_WORK_SIGHT_ANGLE : GOOSE_SIGHT_ANGLE;
+  if (Math.hypot(other.x - goose.x, other.z - goose.z) > GOOSE_SIGHT_RANGE) return false;
+  // Once it has picked its prey it keeps its eyes on it: only walls and distance lose it.
+  if (!tracking && offHeading(goose.facing, goose.x, goose.z, other.x, other.z) > cone / 2) return false;
+  return canSee(state.level, goose.x, goose.z, other.x, other.z);
+}
+
+/** Somebody besides the prey is near it, or the prey looks right at the Goose. */
+function spooked(state: WorldState, goose: Participant, prey: Participant): boolean {
+  const faces =
+    Math.hypot(prey.x - goose.x, prey.z - goose.z) < GOOSE_SPOTTED_RANGE &&
+    offHeading(prey.facing, prey.x, prey.z, goose.x, goose.z) < GOOSE_SPOTTED_ANGLE;
+  return faces || crowded(state, goose, prey);
+}
+
+function crowded(state: WorldState, goose: Participant, c: Participant): boolean {
+  return state.participants.some(
+    (o) => o !== c && o !== goose && o.alive && Math.hypot(o.x - c.x, o.z - c.z) < HUNT_ALONE_RADIUS,
+  );
+}
+
+/** A living chick the Goose sees with nobody else around it, nearest first; null when none. */
 function loneChick(state: WorldState, goose: Participant): Participant | null {
   let best: Participant | null = null;
   let bestD = Infinity;
   for (const c of state.participants) {
-    if (!c.alive || c.role !== 'chick') continue;
-    const crowded = state.participants.some(
-      (o) => o !== c && o !== goose && o.alive && Math.hypot(o.x - c.x, o.z - c.z) < HUNT_ALONE_RADIUS,
-    );
-    if (crowded) continue;
+    if (!c.alive || c.role !== 'chick' || !gooseSees(state, goose, c)) continue;
+    if (crowded(state, goose, c)) continue;
     const d = Math.hypot(c.x - goose.x, c.z - goose.z);
     if (d < bestD) {
       bestD = d;
@@ -145,9 +238,11 @@ function seenVacation(state: WorldState, bot: Participant): number | null {
 
 function chooseGoal(state: WorldState, bot: Participant, avoid: number | null): Goal {
   if (bot.role === 'goose') {
-    // The Goose's task list is a cover: it never works, it strolls and stalks.
-    const prey = bot.packCooldown < 3 ? loneChick(state, bot) : null;
-    return prey ? { kind: 'hunt', target: prey.id } : { kind: 'wander' };
+    // The Goose's task list is a cover: it only poses at its desks, strolls and stalks.
+    const brain = bot.brain!;
+    if (brain.prey !== null) return { kind: 'hunt', target: brain.prey };
+    if ((brain.alibi > 0 || brain.calm > 0) && brain.poseTask !== null) return { kind: 'pose', task: brain.poseTask };
+    return { kind: 'wander' };
   }
   const seen = seenVacation(state, bot);
   if (seen !== null) return { kind: 'report', box: seen };
@@ -162,7 +257,7 @@ function chooseGoal(state: WorldState, bot: Participant, avoid: number | null): 
 }
 
 /** Candidate end cells for a goal; the first one with a route wins. */
-function destinations(state: WorldState, nav: NavGrid, goal: Goal, rng: Rng): number[] {
+function destinations(state: WorldState, nav: NavGrid, bot: Participant, goal: Goal, rng: Rng): number[] {
   switch (goal.kind) {
     case 'task': {
       // Spread the tries around the desk: some spots near it can be closed-in pockets.
@@ -181,11 +276,22 @@ function destinations(state: WorldState, nav: NavGrid, goal: Goal, rng: Rng): nu
       const box = state.boxes.find((b) => b.id === goal.box);
       return box ? [nearestFree(nav, box.x, box.z, 4)] : [];
     }
-    case 'wander':
+    case 'wander': {
+      if (bot.role === 'goose') {
+        // The Goose prowls where chicks still have work to do: it knows the desks too.
+        const open = state.tasks.filter((t) => !t.done && t.owner !== bot.id && state.participants[t.owner]!.alive);
+        if (open.length > 0) return [roomCell(state, nav, state.stations[open[rng.int(open.length)]!.station]!.room, rng)];
+      }
       return [roomCell(state, nav, rng.int(state.level.rooms.length), rng)];
+    }
     case 'hunt': {
-      const prey = state.participants[goal.target]!;
-      return [nearestFree(nav, prey.x, prey.z, 4)];
+      // Where the Goose last saw its prey, not where the prey really is.
+      const brain = bot.brain!;
+      return [nearestFree(nav, brain.preyX, brain.preyZ, 4)];
+    }
+    case 'pose': {
+      const cells = standCells(state, nav, state.tasks[goal.task]!.station);
+      return cells.slice(0, STAND_TRIES);
     }
     case 'report': {
       const box = state.boxes.find((b) => b.id === goal.box);
@@ -208,6 +314,80 @@ function promptFits(bot: Participant, goal: Goal): boolean {
   return false;
 }
 
+/** A random desk task of the Goose's own cover list. */
+function pickPose(state: WorldState, goose: Participant, rng: Rng): number | null {
+  const own = state.tasks.filter((t) => t.owner === goose.id);
+  return own.length > 0 ? own[rng.int(own.length)]!.id : null;
+}
+
+/** The hunt is over (packed or dropped): play a model worker for a while. */
+function endHunt(brain: Brain, rng: Rng, packed: boolean): void {
+  brain.prey = null;
+  brain.stalk = 0;
+  brain.bait = false;
+  brain.goal = null;
+  brain.path = [];
+  brain.alibi = packed
+    ? between(rng, GOOSE_ALIBI_MIN, GOOSE_ALIBI_MAX)
+    : between(rng, GOOSE_DROP_ALIBI_MIN, GOOSE_DROP_ALIBI_MAX);
+}
+
+/**
+ * Bot Goose bookkeeping before the shared bot logic: timers, what it sees and remembers,
+ * standing at a desk, spotting new prey. True when this tick is fully handled.
+ */
+function gooseMind(state: WorldState, bot: Participant, dt: number, rng: Rng, halt: () => void): boolean {
+  const brain = bot.brain!;
+  brain.age += dt;
+  brain.calm = Math.max(0, brain.calm - dt);
+  brain.alibi = Math.max(0, brain.alibi - dt);
+  if (brain.poseTask === null) brain.poseTask = pickPose(state, bot, rng);
+
+  if (brain.prey !== null) {
+    const prey = state.participants[brain.prey]!;
+    if (!prey.alive) {
+      brain.prey = null;
+    } else if (gooseSees(state, bot, prey, true)) {
+      brain.preyX = prey.x;
+      brain.preyZ = prey.z;
+      brain.preyUnseen = 0;
+    } else {
+      // Out of sight: it only remembers the spot for a few seconds, then forgets.
+      brain.preyUnseen += dt;
+      if (brain.preyUnseen > GOOSE_MEMORY) {
+        brain.prey = null;
+        brain.bait = false;
+        brain.stalk = 0;
+      }
+    }
+  }
+
+  if (brain.fake > 0) {
+    brain.fake = Math.max(0, brain.fake - dt);
+    halt();
+    return true;
+  }
+
+  // Free to hunt: look for a lone chick, or switch to one when the current prey got company.
+  const busyPrey = brain.prey !== null && crowded(state, bot, state.participants[brain.prey]!);
+  if ((brain.prey === null || busyPrey) && brain.wait <= 0 && brain.alibi === 0 && brain.calm === 0 && bot.packCooldown < 3) {
+    const chick = loneChick(state, bot);
+    if (chick && chick.id !== brain.prey) {
+      brain.prey = chick.id;
+      brain.preyX = chick.x;
+      brain.preyZ = chick.z;
+      brain.preyUnseen = 0;
+      brain.stalk = between(rng, GOOSE_STALK_MIN, GOOSE_STALK_MAX);
+      brain.pauseIn = GOOSE_PAUSE_EVERY * between(rng, 0.5, 1);
+      brain.abortAt = rng.next() < GOOSE_WHIM_CHANCE ? rng.next() * brain.stalk : -1;
+      // Only a change counts: a chick already looking its way does not scare it off.
+      brain.spooked = spooked(state, bot, chick);
+      brain.bait = brain.age < GOOSE_TRUST_WINDOW && rng.next() < GOOSE_TRUST_CHANCE;
+    }
+  }
+  return false;
+}
+
 /** One bot's decision for this tick. Bots act only through `send`, the same commands the player uses. */
 export function thinkBot(state: WorldState, nav: NavGrid, bot: Participant, dt: number, send: Send): SimEvent[] {
   const brain = bot.brain;
@@ -217,6 +397,8 @@ export function thinkBot(state: WorldState, nav: NavGrid, bot: Participant, dt: 
   const halt = (): void => {
     if (bot.moveX !== 0 || bot.moveZ !== 0) events.push(...send(bot.id, { type: 'move', x: 0, z: 0 }));
   };
+
+  if (bot.role === 'goose' && gooseMind(state, bot, dt, rng, halt)) return events;
 
   if (bot.activeTask !== null) {
     brain.work -= dt;
@@ -256,17 +438,47 @@ export function thinkBot(state: WorldState, nav: NavGrid, bot: Participant, dt: 
   }
   if (goal.kind === 'hunt') {
     const prey = state.participants[goal.target]!;
-    if (bot.canPack === prey.id && bot.packCooldown === 0 && unwatched(state, bot, prey)) {
+    const distance = Math.hypot(prey.x - bot.x, prey.z - bot.z);
+    const dropHunt = (thought: Thought | null): SimEvent[] => {
+      halt();
+      if (thought) events.push(...send(bot.id, { type: 'think', thought }));
+      endHunt(brain, rng, false);
+      return events;
+    };
+    if (brain.stalk > 0 || brain.bait) {
+      // Follow at a distance, stopping now and then, maybe changing its mind.
+      brain.stalk = Math.max(0, brain.stalk - dt);
+      if (brain.bait) {
+        if (distance <= GOOSE_TRUST_RANGE + 0.5 && brain.preyUnseen === 0) return dropHunt('heart');
+      } else if (brain.abortAt >= 0 && brain.stalk <= brain.abortAt) {
+        return dropHunt('meh');
+      }
+      if (!brain.spooked && spooked(state, bot, prey)) {
+        brain.spooked = true;
+        if (rng.next() < GOOSE_ABORT_CHANCE) return dropHunt('doubt');
+      }
+      brain.pauseIn -= dt;
+      if (brain.pauseIn <= 0) {
+        brain.pauseIn = GOOSE_PAUSE_EVERY * between(rng, 0.7, 1.3);
+        brain.wait = between(rng, GOOSE_PAUSE_MIN, GOOSE_PAUSE_MAX);
+        halt();
+        return events;
+      }
+      if (distance < GOOSE_STALK_GAP && brain.preyUnseen === 0) {
+        halt();
+        return events;
+      }
+    } else if (bot.canPack === prey.id && bot.packCooldown === 0 && unwatched(state, bot, prey)) {
       halt();
       events.push(...send(bot.id, { type: 'pack' }));
-      brain.goal = null;
-      brain.path = [];
-      brain.wait = between(rng, 0.5, 1.5);
+      endHunt(brain, rng, true);
+      // A moment of mock panic over the fresh box.
+      brain.wait = GOOSE_PACK_FREEZE;
       return events;
     }
-    // The prey moves: re-plan every second towards where it is now.
+    // The prey moves: re-plan towards where the Goose last saw it.
     const end = brain.path[brain.path.length - 1];
-    if (end && Math.hypot(end.x - prey.x, end.z - prey.z) > 1.5) brain.path = [];
+    if (end && Math.hypot(end.x - brain.preyX, end.z - brain.preyZ) > 1.5) brain.path = [];
     brain.arrived = false;
   }
 
@@ -285,6 +497,16 @@ export function thinkBot(state: WorldState, nav: NavGrid, bot: Participant, dt: 
       // At the goal: wait for its prompt a moment, then let it go for a while.
       brain.atGoal += dt;
       halt();
+      if (goal.kind === 'pose') {
+        // At the desk: stare at the screen for a while, with a thought bubble.
+        events.push(...send(bot.id, { type: 'think', thought: 'busy' }));
+        brain.fake = between(rng, GOOSE_FAKE_MIN, GOOSE_FAKE_MAX);
+        brain.poseTask = null;
+        brain.goal = null;
+        brain.arrived = false;
+        brain.atGoal = 0;
+        return events;
+      }
       if (goal.kind === 'wander' || goal.kind === 'hunt' || brain.atGoal > BOT_GIVE_UP) {
         if (goal.kind === 'task') {
           brain.avoid = goal.task;
@@ -298,11 +520,12 @@ export function thinkBot(state: WorldState, nav: NavGrid, bot: Participant, dt: 
       return events;
     }
     let path: { x: number; z: number }[] | null = null;
-    for (const target of destinations(state, nav, goal, rng)) {
+    for (const target of destinations(state, nav, bot, goal, rng)) {
       path = target >= 0 ? findPath(nav, fitsIn(state.level, state.buckets), bot.x, bot.z, target) : null;
       if (path) break;
     }
     if (!path) {
+      if (goal.kind === 'pose') brain.poseTask = null;
       if (goal.kind === 'task') {
         brain.avoid = goal.task;
         brain.avoidLeft = BOT_AVOID_TIME;

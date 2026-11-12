@@ -3,6 +3,7 @@ import { ACCESSORIES, CHICK_COLORS, TELL_TIME, TELL_VISIBLE_RANGE } from '../con
 import { LOCAL_PLAYER, type WorldState } from '../sim/world';
 import { createChick, type ChickView } from './chick';
 import { mat } from './kit';
+import { t } from '../i18n';
 
 const HALO = new THREE.RingGeometry(0.46, 0.58, 32).rotateX(-Math.PI / 2);
 
@@ -43,7 +44,8 @@ export function createChicks(): ChicksView {
         // The neck only reads up close; the player's own Goose always shows it to its player.
         const close = p.id === LOCAL_PLAYER || Math.hypot(p.x - self.x, p.z - self.z) <= TELL_VISIBLE_RANGE;
         const neck = p.tell > 0 && close ? Math.sin((p.tell / TELL_TIME) * Math.PI) : 0;
-        view.update(p.x, p.z, p.facing, p.moving, p.emotion, time, dt, neck, p.tellBubble && close);
+        const bubble = p.tellBubble && close ? t('goose.tell') : p.thought ? t(`thought.${p.thought}`) : null;
+        view.update(p.x, p.z, p.facing, p.moving, p.emotion, time, dt, neck, bubble);
         if (p.id === LOCAL_PLAYER) {
           halo.position.set(p.x, 0.035, p.z);
           halo.visible = p.alive;

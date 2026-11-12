@@ -6,7 +6,7 @@ import { box, canvasTexture, cone, cylinder, mat, smoothSphere, sphere, withFog 
 
 export interface ChickView {
   root: THREE.Group;
-  /** `neck` 0..1 stretches the Goose's neck; `bubble` shows «га-га?» above the head. */
+  /** `neck` 0..1 stretches the Goose's neck; `bubble` is the text shown above the head, or null. */
   update(
     x: number,
     z: number,
@@ -16,14 +16,14 @@ export interface ChickView {
     time: number,
     dt: number,
     neck?: number,
-    bubble?: boolean,
+    bubble?: string | null,
   ): void;
 }
 
 const BUBBLE = new THREE.PlaneGeometry(1.5, 0.7);
 const bubbles = new Map<string, THREE.Material>();
 
-/** «га-га?» speech bubble; one material per text. */
+/** Speech/thought bubble («га-га?», «?», «♥»…); one material per text. */
 function bubbleMaterial(text: string): THREE.Material {
   let found = bubbles.get(text);
   if (!found) {
@@ -269,6 +269,7 @@ export function createChick(color = 0xffd84a, accessory: Accessory | null = null
   snooze.position.set(0.42, 0.8, 0);
   head.add(stars, bang, snooze);
   const talk = new THREE.Mesh(BUBBLE, bubbleMaterial(t('goose.tell')));
+  let talkText: string | null = null;
   talk.position.set(0, 1.15, 0);
   talk.visible = false;
   head.add(talk);
@@ -314,7 +315,7 @@ export function createChick(color = 0xffd84a, accessory: Accessory | null = null
 
   return {
     root,
-    update(x, z, facing, moving, emotion, time, dt, stretch = 0, bubble = false) {
+    update(x, z, facing, moving, emotion, time, dt, stretch = 0, bubble = null) {
       if (emotion !== shown) show(emotion);
       root.position.set(x, 0, z);
       // Turn towards the heading along the shortest arc.
@@ -359,7 +360,11 @@ export function createChick(color = 0xffd84a, accessory: Accessory | null = null
         neck.scale.set(1, reach + 0.1, 1);
         neck.position.set(0, 0.5 + (reach + 0.1) / 2, 0.02);
       }
-      talk.visible = bubble;
+      talk.visible = bubble !== null;
+      if (bubble !== null && bubble !== talkText) {
+        talkText = bubble;
+        talk.material = bubbleMaterial(bubble);
+      }
       talk.rotation.y = -heading + Math.PI / 4;
       // Floating marks face the camera regardless of where the chick looks.
       bang.rotation.y = -heading + Math.PI / 4;
