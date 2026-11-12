@@ -4,13 +4,18 @@ import { createRng } from './rng';
 /** A box in the office. Cargo boxes and vacation boxes (stage 3) share this shape. */
 export interface Box {
   id: number;
-  kind: 'cargo';
+  /** Cargo from «Вантажник», or a «ГАРЯЧА ВІДПУСТКА» box with a packed chick inside. Same model. */
+  kind: 'cargo' | 'vacation';
   x: number;
   z: number;
   /** Participant carrying it, or null when it lies on the floor. */
   carrier: number | null;
-  /** Cargo task this box belongs to. */
+  /** Cargo task this box belongs to; -1 for a vacation box. */
   task: number;
+  /** Vacation box: the packed participant; null for cargo. */
+  inside: number | null;
+  /** Vacation box: somebody already reported it. */
+  reported: boolean;
   /** Metres carried on the current route. */
   travelled: number;
   /** Metres after which it slips out of the wings on this route; -1 means it holds. */
@@ -42,7 +47,22 @@ export function boxInReach(boxes: Box[], x: number, z: number): Box | null {
   let best: Box | null = null;
   let bestDistance = INTERACT_RANGE + 0.4;
   for (const box of boxes) {
-    if (box.carrier !== null) continue;
+    if (box.carrier !== null || box.kind !== 'cargo') continue;
+    const distance = Math.hypot(box.x - x, box.z - z);
+    if (distance <= bestDistance) {
+      best = box;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+/** The closest unreported vacation box within reporting reach, or null. */
+export function vacationInReach(boxes: Box[], x: number, z: number, range: number): Box | null {
+  let best: Box | null = null;
+  let bestDistance = range;
+  for (const box of boxes) {
+    if (box.kind !== 'vacation' || box.reported) continue;
     const distance = Math.hypot(box.x - x, box.z - z);
     if (distance <= bestDistance) {
       best = box;

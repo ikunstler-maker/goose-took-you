@@ -128,8 +128,8 @@ export const SPAWN_SPACING = 1.5;
 /** Bots. Grid resolution for path finding, metres. */
 export const NAV_STEP = 0.5;
 /** Seconds a bot spends "doing" a window task, picked between the two. */
-export const BOT_TASK_MIN = 4;
-export const BOT_TASK_MAX = 9;
+export const BOT_TASK_MIN = 6;
+export const BOT_TASK_MAX = 12;
 /** Pause after arriving somewhere while wandering, seconds. */
 export const BOT_IDLE_MIN = 1.5;
 export const BOT_IDLE_MAX = 5;
@@ -141,3 +141,25 @@ export const BOT_STUCK_DISTANCE = 0.25;
 export const BOT_GIVE_UP = 2;
 /** How long a bot leaves a task alone after giving up on it, seconds. */
 export const BOT_AVOID_TIME = 20;
+
+/** The Goose. One per match. */
+export const GEESE = 1;
+/** How close the Goose must be to pack a chick, metres. */
+export const PACK_RANGE = 1.3;
+/** Seconds between packs, and before the first one. */
+export const PACK_COOLDOWN = 18;
+export const PACK_FIRST_COOLDOWN = 10;
+/** How close a chick must be to a vacation box to report it, metres. */
+export const REPORT_RANGE = 1.6;
+/** Goose tell: the neck stretches every TELL_MIN..TELL_MAX seconds for TELL_TIME. */
+export const TELL_MIN = 12;
+export const TELL_MAX = 15;
+export const TELL_TIME = 0.9;
+/** Someone this close to a stretching Goose gets the «га-га?» bubble, metres. */
+export const TELL_BUBBLE_RANGE = 2.2;
+/** The neck stretch is drawn only when the local player is this close, metres. */
+export const TELL_VISIBLE_RANGE = 5;
+/** Bot Goose: a chick counts as alone when nobody else is this close to it, metres. */
+export const HUNT_ALONE_RADIUS = 7;
+/** Bot chicks walk over to report a vacation box they see this close, metres. */
+export const BOT_REPORT_SIGHT = 8;

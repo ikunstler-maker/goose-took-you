@@ -84,6 +84,13 @@ Entry format (≤8 lines):
 - Verify: bot completion sweep over many seeds; dump `blocked()` on a 0.25 m grid around the bot.
 - Seen: 2026-11-12
 
+### Bots stuck together in a corner forever
+- Symptom: a bot-only match never ends; two bots stand in one spot with `goal: null` and a rotating `avoid`.
+- Root cause: path search started from the single nearest nav cell, which sat in a grid pocket the chick was not really trapped in.
+- Fix: multi-start A* from every free cell the chick can walk to in a straight line (`START_RING` in `src/sim/nav.ts`).
+- Verify: bot-only match sweep (20 seeds) — every match reaches `phase: 'over'`.
+- Seen: 2026-11-12
+
 ## Mini-games
 
 ### New hub prop breaks reachability

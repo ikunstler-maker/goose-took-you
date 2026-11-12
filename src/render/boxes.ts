@@ -1,11 +1,9 @@
 import * as THREE from 'three';
 import { BOX_SIZE } from '../config';
+import { getLang, t } from '../i18n';
+import type { Box } from '../sim/cargo';
 import type { WorldState } from '../sim/world';
-
-/** Boxes outside the local player's sight are not drawn, like the chicks carrying them. */
-function isSeen(world: WorldState, x: number, z: number): boolean {
-  return world.visible[Math.floor(z) * world.level.size + Math.floor(x)] === 1;
-}
+import { canvasTexture, withFog } from './kit';
 import { cardboardBox } from './props';
 
 export interface BoxesView {
@@ -14,13 +12,54 @@ export interface BoxesView {
   dispose(): void;
 }
 
-/** Moving boxes: carried in the chick's wings (bouncing and knocking) or lying where they fell. */
+/** Boxes outside the local player's sight are not drawn, like the chicks carrying them. */
+function isSeen(world: WorldState, x: number, z: number): boolean {
+  return world.visible[Math.floor(z) * world.level.size + Math.floor(x)] === 1;
+}
+
+const STICKER = new THREE.PlaneGeometry(BOX_SIZE * 0.8, BOX_SIZE * 0.36).rotateX(-Math.PI / 2);
+const stickers = new Map<string, THREE.Material>();
+
+/** «ГАРЯЧА ВІДПУСТКА» label, one shared material per language. Small on purpose: from afar it is just a box. */
+function stickerMaterial(): THREE.Material {
+  const lang = getLang();
+  let found = stickers.get(lang);
+  if (!found) {
+    const texture = canvasTexture(
+      256,
+      (ctx) => {
+        ctx.fillStyle = '#ff6a3d';
+        ctx.fillRect(0, 0, 256, 116);
+        ctx.fillStyle = '#fff6d8';
+        ctx.fillRect(6, 6, 244, 104);
+        ctx.fillStyle = '#e5433d';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = '900 34px system-ui, sans-serif';
+        const [a, b] = t('box.vacation').split(' ');
+        ctx.fillText(a ?? '', 128, 38, 236);
+        ctx.fillText(b ?? '', 128, 80, 236);
+      },
+      116,
+    );
+    found = withFog(new THREE.MeshLambertMaterial({ map: texture }));
+    stickers.set(lang, found);
+  }
+  return found;
+}
+
+/** Cargo and vacation boxes share one model; only the sticker on the lid differs. */
 export function createBoxes(): BoxesView {
   const root = new THREE.Group();
   const meshes = new Map<number, THREE.Group>();
 
-  const make = (): THREE.Group => {
+  const make = (box: Box): THREE.Group => {
     const model = cardboardBox(BOX_SIZE);
+    if (box.kind === 'vacation') {
+      const sticker = new THREE.Mesh(STICKER, stickerMaterial());
+      sticker.position.y = BOX_SIZE + 0.006;
+      model.add(sticker);
+    }
     // Shadows are redrawn only on demand, so moving boxes do not cast them.
     model.traverse((node) => (node.castShadow = false));
     root.add(model);
@@ -35,7 +74,7 @@ export function createBoxes(): BoxesView {
         alive.add(box.id);
         let model = meshes.get(box.id);
         if (!model) {
-          model = make();
+          model = make(box);
           meshes.set(box.id, model);
         }
         const carrier = box.carrier === null ? null : world.participants[box.carrier];
@@ -58,7 +97,7 @@ export function createBoxes(): BoxesView {
       }
     },
     dispose() {
-      // Geometry and materials come from the shared kit caches.
+      // Geometry and materials come from the shared caches.
       root.clear();
       meshes.clear();
     },

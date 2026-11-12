@@ -6,10 +6,11 @@ import { createChicks } from './render/chicks';
 import { createTaskMarkers, type TaskMarkers } from './render/markers';
 import { buildOffice, type OfficeView } from './render/office';
 import { createStage } from './render/stage';
-import { setLang } from './i18n';
-import { applyCommand, createWorld, LOCAL_PLAYER, me, step, type Command, type SimEvent, type WorldState } from './sim/world';
+import { setLang, t, type I18nKey } from './i18n';
+import { applyCommand, createWorld, LOCAL_PLAYER, me, step, type Command, type Role, type SimEvent, type WorldState } from './sim/world';
 import { createHud } from './ui/hud';
 import { createLobby } from './ui/lobby';
+import { createMatchScreens } from './ui/match';
 import { loadSettings, saveSettings } from './ui/settings';
 
 const settings = loadSettings();
@@ -67,8 +68,11 @@ const hud = createHud({
     rebuildOffice();
     minigames.relabel();
     lobby.relabel();
+    screens.relabel(world);
   },
 });
+
+const screens = createMatchScreens({ onNewMatch: () => startOffice(randomSeed()) });
 
 const lobby = createLobby({
   onLook: (color, accessory) => {
@@ -90,6 +94,17 @@ function handle(events: SimEvent[]): void {
       hud.setTasks(world);
       markers?.refresh(world);
     }
+    // A report is news for the whole office, whoever made it.
+    if (event.type === 'reported') {
+      hud.shout('hud.reported', { color: t(`look.color.${world.participants[event.victim]!.color}` as I18nKey) });
+    }
+    if (event.type === 'packed') {
+      if (event.victim === LOCAL_PLAYER) {
+        minigames.close();
+        screens.showPacked(world);
+      } else if (event.who === LOCAL_PLAYER) hud.shout('hud.packedDone');
+      hud.setTasks(world);
+    }
     // The rest of the HUD and windows follow the local player.
     if ('who' in event && event.who !== LOCAL_PLAYER) continue;
     switch (event.type) {
@@ -105,7 +120,14 @@ function handle(events: SimEvent[]): void {
         break;
       case 'started':
         lobby.hide();
+        screens.showRole(world);
+        markers?.refresh(world);
         hud.setTasks(world);
+        break;
+      case 'gameOver':
+        minigames.close();
+        held.clear();
+        screens.showOver(world);
         break;
       case 'taskClosed':
       case 'taskDone':
@@ -129,10 +151,17 @@ function send(command: Command): void {
   handle(applyCommand(world, LOCAL_PLAYER, command));
 }
 
+/** `?role=goose|chick` fixes the player's role for testing; otherwise it is random. */
+function roleFromUrl(): Role | null {
+  const raw = new URLSearchParams(window.location.search).get('role');
+  return raw === 'goose' || raw === 'chick' ? raw : null;
+}
+
 function startOffice(seed: number): void {
   minigames.close();
+  screens.hideAll();
   const look = loadSettings();
-  world = createWorld(seed, { color: look.color, accessory: look.accessory });
+  world = createWorld(seed, { color: look.color, accessory: look.accessory }, roleFromUrl());
   rebuildOffice();
   chicks.rebuild(world);
   lobby.show(me(world).color, me(world).accessory);
@@ -178,6 +207,14 @@ window.addEventListener('keydown', (event) => {
     send({ type: 'interact' });
     return;
   }
+  if (event.code === 'KeyQ' && !event.repeat && !minigames.isOpen()) {
+    send({ type: 'pack' });
+    return;
+  }
+  if (event.code === 'KeyR' && !event.repeat && !minigames.isOpen()) {
+    send({ type: 'report' });
+    return;
+  }
   if (!(event.code in KEYS)) return;
   event.preventDefault();
   held.add(event.code);
@@ -206,6 +243,8 @@ function frame(now: number): void {
   while (accumulator >= TICK) {
     handle(step(world, TICK));
     minigames.tick(TICK);
+    // The pack countdown in the prompt ticks down by itself.
+    if (world.tick % 15 === 0 && me(world).canPack !== null) hud.setTasks(world);
     accumulator -= TICK;
   }
 
@@ -223,4 +262,8 @@ function frame(now: number): void {
 requestAnimationFrame(frame);
 
 // Debug handle for automated checks; carries no gameplay authority.
-(window as unknown as { __goose: unknown }).__goose = { world: () => world };
+(window as unknown as { __goose: unknown }).__goose = {
+  world: () => world,
+  /** Lets automated checks act as any participant through the normal command path. */
+  send: (who: number, command: Command) => handle(applyCommand(world, who, command)),
+};

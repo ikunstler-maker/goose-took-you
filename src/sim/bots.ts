@@ -1,6 +1,8 @@
 import {
   BOT_AVOID_TIME,
   BOT_GIVE_UP,
+  BOT_REPORT_SIGHT,
+  HUNT_ALONE_RADIUS,
   BOT_IDLE_MAX,
   BOT_IDLE_MIN,
   BOT_START_DELAY,
@@ -12,6 +14,7 @@ import {
 import { cellCentre, findPath, fitsIn, nearestFree, type NavGrid } from './nav';
 import { createRng, type Rng } from './rng';
 import { stationDistance, WINDOW_TASKS } from './tasks';
+import { canSee } from './vision';
 import type { Command, Participant, SimEvent, WorldState } from './world';
 
 /** What a bot is heading for. */
@@ -19,7 +22,11 @@ export type Goal =
   | { kind: 'task'; task: number }
   | { kind: 'deliver'; task: number }
   | { kind: 'pickup'; box: number }
-  | { kind: 'wander' };
+  | { kind: 'wander' }
+  /** Goose: stalk a lone chick. */
+  | { kind: 'hunt'; target: number }
+  /** Chick: walk over to a vacation box it saw. */
+  | { kind: 'report'; box: number };
 
 /** A bot's plan; plain data so the whole world stays serialisable. */
 export interface Brain {
@@ -100,12 +107,55 @@ function roomCell(state: WorldState, nav: NavGrid, roomId: number, rng: Rng): nu
   return nearestFree(nav, room.cx, room.cz, 12);
 }
 
+/** Nobody but the victim could see the Goose do it. */
+function unwatched(state: WorldState, goose: Participant, victim: Participant): boolean {
+  return state.participants.every(
+    (o) => o === goose || o === victim || !o.alive || !canSee(state.level, o.x, o.z, goose.x, goose.z),
+  );
+}
+
+/** A living chick with nobody else around it, nearest first; null when none. */
+function loneChick(state: WorldState, goose: Participant): Participant | null {
+  let best: Participant | null = null;
+  let bestD = Infinity;
+  for (const c of state.participants) {
+    if (!c.alive || c.role !== 'chick') continue;
+    const crowded = state.participants.some(
+      (o) => o !== c && o !== goose && o.alive && Math.hypot(o.x - c.x, o.z - c.z) < HUNT_ALONE_RADIUS,
+    );
+    if (crowded) continue;
+    const d = Math.hypot(c.x - goose.x, c.z - goose.z);
+    if (d < bestD) {
+      bestD = d;
+      best = c;
+    }
+  }
+  return best;
+}
+
+/** An unreported vacation box the chick can see nearby. */
+function seenVacation(state: WorldState, bot: Participant): number | null {
+  for (const box of state.boxes) {
+    if (box.kind !== 'vacation' || box.reported) continue;
+    if (Math.hypot(box.x - bot.x, box.z - bot.z) > BOT_REPORT_SIGHT) continue;
+    if (canSee(state.level, bot.x, bot.z, box.x, box.z)) return box.id;
+  }
+  return null;
+}
+
 function chooseGoal(state: WorldState, bot: Participant, avoid: number | null): Goal {
+  if (bot.role === 'goose') {
+    // The Goose's task list is a cover: it never works, it strolls and stalks.
+    const prey = bot.packCooldown < 3 ? loneChick(state, bot) : null;
+    return prey ? { kind: 'hunt', target: prey.id } : { kind: 'wander' };
+  }
+  const seen = seenVacation(state, bot);
+  if (seen !== null) return { kind: 'report', box: seen };
   if (bot.carrying !== null) {
     const box = state.boxes.find((b) => b.id === bot.carrying)!;
     return { kind: 'deliver', task: box.task };
   }
-  const dropped = state.boxes.find((b) => b.carrier === null && state.tasks[b.task]!.owner === bot.id);
+  const dropped = state.boxes.find((b) => b.kind === 'cargo' && b.carrier === null && state.tasks[b.task]!.owner === bot.id);
   if (dropped) return { kind: 'pickup', box: dropped.id };
   const task = state.tasks.find((t) => t.owner === bot.id && !t.done && !t.started && t.id !== avoid);
   return task ? { kind: 'task', task: task.id } : { kind: 'wander' };
@@ -133,6 +183,14 @@ function destinations(state: WorldState, nav: NavGrid, goal: Goal, rng: Rng): nu
     }
     case 'wander':
       return [roomCell(state, nav, rng.int(state.level.rooms.length), rng)];
+    case 'hunt': {
+      const prey = state.participants[goal.target]!;
+      return [nearestFree(nav, prey.x, prey.z, 4)];
+    }
+    case 'report': {
+      const box = state.boxes.find((b) => b.id === goal.box);
+      return box ? [nearestFree(nav, box.x, box.z, 4)] : [];
+    }
   }
 }
 
@@ -153,7 +211,7 @@ function promptFits(bot: Participant, goal: Goal): boolean {
 /** One bot's decision for this tick. Bots act only through `send`, the same commands the player uses. */
 export function thinkBot(state: WorldState, nav: NavGrid, bot: Participant, dt: number, send: Send): SimEvent[] {
   const brain = bot.brain;
-  if (!brain || state.phase !== 'play') return [];
+  if (!brain || state.phase !== 'play' || !bot.alive) return [];
   const rng = createRng(((state.level.seed * 7919 + bot.id * 104729 + state.tick) >>> 0) || 1);
   const events: SimEvent[] = [];
   const halt = (): void => {
@@ -188,6 +246,30 @@ export function thinkBot(state: WorldState, nav: NavGrid, bot: Participant, dt: 
   }
   const goal = brain.goal!;
 
+  // Reporting and packing use their own keys, not the E prompt.
+  if (bot.canReport !== null && bot.role === 'chick') {
+    halt();
+    events.push(...send(bot.id, { type: 'report' }));
+    brain.goal = null;
+    brain.path = [];
+    return events;
+  }
+  if (goal.kind === 'hunt') {
+    const prey = state.participants[goal.target]!;
+    if (bot.canPack === prey.id && bot.packCooldown === 0 && unwatched(state, bot, prey)) {
+      halt();
+      events.push(...send(bot.id, { type: 'pack' }));
+      brain.goal = null;
+      brain.path = [];
+      brain.wait = between(rng, 0.5, 1.5);
+      return events;
+    }
+    // The prey moves: re-plan every second towards where it is now.
+    const end = brain.path[brain.path.length - 1];
+    if (end && Math.hypot(end.x - prey.x, end.z - prey.z) > 1.5) brain.path = [];
+    brain.arrived = false;
+  }
+
   if (promptFits(bot, goal)) {
     halt();
     events.push(...send(bot.id, { type: 'interact' }));
@@ -203,7 +285,7 @@ export function thinkBot(state: WorldState, nav: NavGrid, bot: Participant, dt: 
       // At the goal: wait for its prompt a moment, then let it go for a while.
       brain.atGoal += dt;
       halt();
-      if (goal.kind === 'wander' || brain.atGoal > BOT_GIVE_UP) {
+      if (goal.kind === 'wander' || goal.kind === 'hunt' || brain.atGoal > BOT_GIVE_UP) {
         if (goal.kind === 'task') {
           brain.avoid = goal.task;
           brain.avoidLeft = BOT_AVOID_TIME;

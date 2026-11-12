@@ -137,7 +137,7 @@ describe('cargo', () => {
   });
 
   it('slips on roughly BOX_SLIP_CHANCE of routes', () => {
-    const box = { id: 1, kind: 'cargo' as const, x: 0, z: 0, carrier: 0, task: 0, travelled: 0, slipAt: -1 };
+    const box = { id: 1, kind: 'cargo' as const, x: 0, z: 0, carrier: 0, task: 0, travelled: 0, slipAt: -1, inside: null, reported: false };
     let slips = 0;
     const runs = 4000;
     for (let tick = 0; tick < runs; tick++) {

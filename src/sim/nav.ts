@@ -59,6 +59,9 @@ export function nearestFree(nav: NavGrid, x: number, z: number, maxRing = 8): nu
   return -1;
 }
 
+/** How far around the chick (in cells) a route may start. */
+const START_RING = 3;
+
 /** Answers whether a chick fits at a point; the real collision test. */
 export type Fits = (x: number, z: number) => boolean;
 
@@ -85,9 +88,30 @@ export function findPath(
   fromZ: number,
   toCell: number,
 ): { x: number; z: number }[] | null {
-  const start = nearestFree(nav, fromX, fromZ, 3);
-  if (start < 0 || toCell < 0 || nav.free[toCell] !== 1) return null;
+  if (toCell < 0 || nav.free[toCell] !== 1) return null;
   const n = nav.cols;
+  // Start from every free cell within a step or two that the chick can walk to in a straight
+  // line: one nearest cell may sit in a pocket of the grid the chick itself is not stuck in.
+  const starts: { cell: number; cost: number }[] = [];
+  const fx = Math.floor(fromX / nav.step);
+  const fz = Math.floor(fromZ / nav.step);
+  for (let dz = -START_RING; dz <= START_RING; dz++) {
+    for (let dx = -START_RING; dx <= START_RING; dx++) {
+      const gx = fx + dx;
+      const gz = fz + dz;
+      if (gx < 0 || gz < 0 || gx >= n || gz >= n) continue;
+      const cell = gz * n + gx;
+      if (nav.free[cell] !== 1) continue;
+      const c = cellCentre(nav, cell);
+      const cost = Math.hypot(c.x - fromX, c.z - fromZ) / nav.step;
+      if (cost <= 1 || clearLine(fits, fromX, fromZ, c.x, c.z)) starts.push({ cell, cost });
+    }
+  }
+  if (starts.length === 0) {
+    const start = nearestFree(nav, fromX, fromZ, 3);
+    if (start < 0) return null;
+    starts.push({ cell: start, cost: 0 });
+  }
   const total = n * n;
   const g = new Float32Array(total).fill(Infinity);
   const came = new Int32Array(total).fill(-1);
@@ -137,8 +161,12 @@ export function findPath(
     return cell;
   };
 
-  g[start] = 0;
-  push(h(start), start);
+  for (const st of starts) {
+    if (st.cost < g[st.cell]!) {
+      g[st.cell] = st.cost;
+      push(st.cost + h(st.cell), st.cell);
+    }
+  }
   let found = false;
   while (heap.length > 0) {
     const cell = pop();
