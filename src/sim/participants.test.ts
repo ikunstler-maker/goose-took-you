@@ -40,6 +40,8 @@ describe('participants', () => {
   it('holds everyone still in the lobby and moves any participant by command in play', () => {
     const state = createWorld(7);
     const bot = state.participants[2]!;
+    // Drive this one by hand: no brain overriding the command.
+    bot.brain = null;
     const { x, z } = bot;
     applyCommand(state, bot.id, { type: 'move', x: 1, z: 0 });
     for (let i = 0; i < 20; i++) step(state, TICK);

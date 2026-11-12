@@ -22,7 +22,8 @@ function standAt(state: WorldState, taskId: number): void {
   step(state, TICK);
 }
 
-const taskOf = (state: WorldState, kind: TaskKind): number => state.tasks.find((t) => t.kind === kind)!.id;
+const taskOf = (state: WorldState, kind: TaskKind): number =>
+  state.tasks.find((t) => t.kind === kind && t.owner === LOCAL_PLAYER)!.id;
 
 describe('tasks', () => {
   it('finds hub stations for every task kind', () => {
@@ -32,7 +33,7 @@ describe('tasks', () => {
 
   it('assigns one task of each kind on distinct stations', () => {
     for (const seed of [1, 7, 42, 999]) {
-      const { tasks } = createWorld(seed);
+      const tasks = createWorld(seed).tasks.filter((t) => t.owner === LOCAL_PLAYER);
       expect(tasks).toHaveLength(TASKS_PER_PLAYER);
       expect(new Set(tasks.map((t) => t.station)).size).toBe(tasks.length);
       for (const kind of KINDS) {
@@ -59,7 +60,7 @@ describe('tasks', () => {
 
     applyCommand(state, LOCAL_PLAYER, { type: 'interact' });
     expect(applyCommand(state, LOCAL_PLAYER, { type: 'finishTask' })).toContainEqual({ type: 'taskDone', who: 0, taskId: id });
-    expect(taskProgress(state.tasks)).toBe(1 / TASKS_PER_PLAYER);
+    expect(taskProgress(state.tasks)).toBe(1 / state.tasks.length);
     step(state, TICK);
     expect(me(state).prompt).not.toEqual({ kind: 'task', task: id });
   });

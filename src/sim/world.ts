@@ -11,8 +11,10 @@ import {
   SPAWN_SPACING,
   SURPRISED_TIME,
 } from '../config';
+import { createBrain, thinkBot, type Brain } from './bots';
 import { boxInReach, carryBox, rollSlip, type Box } from './cargo';
 import { blocked, buildBuckets, generateLevel, roomAt, type Buckets, type Level } from './level';
+import { buildNav, type NavGrid } from './nav';
 import { createRng } from './rng';
 import {
   assignCargoTargets,
@@ -64,6 +66,8 @@ export interface Participant {
   prompt: Prompt | null;
   /** Task whose mini-game is open; the chick stands still meanwhile, the office does not. */
   activeTask: number | null;
+  /** Bot plan; null for the local player. */
+  brain: Brain | null;
 }
 
 /** Match phase. The lobby is where the player picks a look before the start. */
@@ -72,6 +76,8 @@ export type Phase = 'lobby' | 'play';
 export interface WorldState {
   level: Level;
   buckets: Buckets;
+  /** Walkability grid bots plan their routes on. */
+  nav: NavGrid;
   phase: Phase;
   participants: Participant[];
   /** 1 for every floor cell the local player currently sees. */
@@ -165,6 +171,7 @@ export function createWorld(seed: number, look: { color: number; accessory: numb
   const buckets = buildBuckets(level);
   const stations = findStations(level);
   const spots = spawnPoints(level, buckets);
+  const botRng = createRng(seed ^ 0xb075);
   const participants: Participant[] = spots.map((spot, id) => ({
     id,
     isBot: id !== LOCAL_PLAYER,
@@ -185,17 +192,23 @@ export function createWorld(seed: number, look: { color: number; accessory: numb
     roomId: roomAt(level, spot.x, spot.z)?.id ?? null,
     prompt: null,
     activeTask: null,
+    brain: id === LOCAL_PLAYER ? null : createBrain(botRng),
   }));
+  // Everyone gets a full task list; ids are global so boxes and events stay unambiguous.
+  const tasks: Task[] = [];
+  for (const p of participants) {
+    for (const task of assignTasks(stations, seed, p.id)) tasks.push({ ...task, id: tasks.length });
+  }
   const state: WorldState = {
     level,
     buckets,
+    nav: buildNav(level, buckets),
     phase: 'lobby',
     participants,
     visible: new Uint8Array(level.size * level.size),
     visibleVersion: 1,
     stations,
-    // Bots get their own tasks once they can do them (stage 3b).
-    tasks: assignTasks(stations, seed, LOCAL_PLAYER),
+    tasks,
     boxes: [],
     broadcast: 0,
     tick: 0,
@@ -390,6 +403,8 @@ function stepParticipant(state: WorldState, p: Participant, dt: number, events: 
 
 export function step(state: WorldState, dt: number): SimEvent[] {
   const events: SimEvent[] = [];
+  const send = (who: number, command: Command): SimEvent[] => applyCommand(state, who, command);
+  for (const p of state.participants) if (p.brain) events.push(...thinkBot(state, state.nav, p, dt, send));
   for (const p of state.participants) stepParticipant(state, p, dt, events);
   state.broadcast = Math.max(0, state.broadcast - dt);
   state.tick++;

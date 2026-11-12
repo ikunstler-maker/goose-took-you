@@ -85,7 +85,12 @@ const minigames = createMinigameHost({
 
 function handle(events: SimEvent[]): void {
   for (const event of events) {
-    // The HUD and windows follow the local player; other participants act silently for now.
+    // Anyone's finished task moves the shared bar.
+    if (event.type === 'taskDone') {
+      hud.setTasks(world);
+      markers?.refresh(world);
+    }
+    // The rest of the HUD and windows follow the local player.
     if ('who' in event && event.who !== LOCAL_PLAYER) continue;
     switch (event.type) {
       case 'roomChanged':
