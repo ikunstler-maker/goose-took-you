@@ -222,3 +222,22 @@ export const BOX_SUSPECT_RANGE = 3;
 export const BOT_FOLLOW_CHANCE = 0.7;
 export const BOT_HUNCH_CHANCE = 0.6;
 export const BOT_RANDOM_VOTE = 0.15;
+
+/** Carpets: the Goose dives under one and crawls to another of the same network. */
+export const CARPET_COUNT = 8;
+/** Rug size, metres (long side, short side). */
+export const CARPET_LONG = 1.4;
+export const CARPET_SHORT = 0.9;
+/** The Goose must stand this close to a rug's centre to dive under it, metres. */
+export const CARPET_RANGE = 1.1;
+/** Sight radius while hiding under a rug, metres. */
+export const CARPET_VISION = 4;
+/** The rug's edge lifts this long when someone dives in or climbs out, seconds. */
+export const CARPET_DIVE = 0.4;
+/** Pause between carpet actions (dive, crawl, climb out), seconds. */
+export const CARPET_COOLDOWN = 0.5;
+/** Bot Goose: escapes under a rug this close after a pack; stays 1.5–4 s, climbs out within 12 s, metres and seconds. */
+export const CARPET_ESCAPE_RANGE = 9;
+export const CARPET_HIDE_MIN = 1.5;
+export const CARPET_HIDE_MAX = 4;
+export const CARPET_HIDE_LIMIT = 12;

@@ -20,7 +20,7 @@ export const SKIP_VOTE = -1;
 export type MeetingStage = 'talk' | 'vote' | 'result';
 
 /** What a bot can say; the UI turns it into text via `chat.<kind>`. */
-export type ChatKind = 'found' | 'button' | 'saw' | 'sus' | 'where' | 'with' | 'agree' | 'defend' | 'nothing';
+export type ChatKind = 'found' | 'button' | 'saw' | 'sawCarpet' | 'sus' | 'where' | 'with' | 'agree' | 'defend' | 'nothing';
 
 export interface ChatLine {
   who: number;
@@ -62,17 +62,21 @@ export interface Suspicion {
   who: number;
   level: number;
   room: RoomType | null;
+  /** What was seen: a pack, or the Goose diving under / climbing out of a rug. */
+  deed: 'pack' | 'carpet' | 'box';
 }
 
 const roomType = (state: WorldState, roomId: number | null): RoomType | null =>
   roomId === null ? null : state.level.rooms[roomId]!.type;
 
-/** Every bot chick that sees the Goose pack someone remembers it for sure. */
-export function notePack(state: WorldState, goose: Participant, victim: Participant): void {
+/** Every bot chick that sees the Goose pack someone (or use a rug) remembers it for sure. */
+export function noteDeed(state: WorldState, goose: Participant, victim: Participant | null, deed: 'pack' | 'carpet'): void {
   for (const p of state.participants) {
     if (!p.brain || p === goose || p === victim || !p.alive || p.role !== 'chick') continue;
     if (!canSee(state.level, p.x, p.z, goose.x, goose.z)) continue;
-    p.brain.suspicion = { who: goose.id, level: 2, room: roomType(state, goose.roomId) };
+    // A pack outweighs a rug sighting; never downgrade.
+    if (p.brain.suspicion?.level === 2 && p.brain.suspicion.deed === 'pack' && deed === 'carpet') continue;
+    p.brain.suspicion = { who: goose.id, level: 2, room: roomType(state, goose.roomId), deed };
   }
 }
 
@@ -80,9 +84,9 @@ export function notePack(state: WorldState, goose: Participant, victim: Particip
 export function noteBox(state: WorldState, bot: Participant, boxX: number, boxZ: number): void {
   if (!bot.brain || (bot.brain.suspicion && bot.brain.suspicion.level >= 1)) return;
   for (const o of state.participants) {
-    if (o === bot || !o.alive || Math.hypot(o.x - boxX, o.z - boxZ) > BOX_SUSPECT_RANGE) continue;
+    if (o === bot || !o.alive || o.under !== null || Math.hypot(o.x - boxX, o.z - boxZ) > BOX_SUSPECT_RANGE) continue;
     if (!canSee(state.level, bot.x, bot.z, o.x, o.z)) continue;
-    bot.brain.suspicion = { who: o.id, level: 1, room: roomType(state, o.roomId) };
+    bot.brain.suspicion = { who: o.id, level: 1, room: roomType(state, o.roomId), deed: 'box' };
     return;
   }
 }
@@ -132,6 +136,7 @@ export function startMeeting(state: WorldState, caller: Participant, victim: num
     p.moveZ = 0;
     p.moving = false;
     p.thought = null;
+    p.under = null;
     if (p.brain) {
       p.brain.goal = null;
       p.brain.path = [];
@@ -139,6 +144,7 @@ export function startMeeting(state: WorldState, caller: Participant, victim: num
       p.brain.work = 0;
       p.brain.fake = 0;
       p.brain.prey = null;
+      p.brain.escape = null;
     }
   }
   // Vacation boxes are taken away; whatever someone carried stays in their wings.
@@ -167,7 +173,7 @@ function buddyOf(state: WorldState, p: Participant): number | null {
   let best: number | null = null;
   let bestD = 6;
   for (const o of state.participants) {
-    if (o === p || !o.alive) continue;
+    if (o === p || !o.alive || o.under !== null) continue;
     const d = Math.hypot(o.x - p.x, o.z - p.z);
     if (d < bestD && canSee(state.level, p.x, p.z, o.x, o.z)) {
       best = o.id;
@@ -256,7 +262,7 @@ function planBots(
       continue;
     }
     if (s && s.level === 2 && state.participants[s.who]!.alive) {
-      say(t, b.id, 'saw', s.who, s.room);
+      say(t, b.id, s.deed === 'carpet' ? 'sawCarpet' : 'saw', s.who, s.room);
       vote(b.id, s.who);
     } else if (s && s.level === 1 && state.participants[s.who]!.alive) {
       say(t, b.id, 'sus', s.who, s.room);

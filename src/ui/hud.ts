@@ -64,6 +64,7 @@ export function createHud(handlers: { onNewOffice(): void; onLangChange(lang: La
   const promptText = (w: WorldState): string => {
     const self = me(w);
     if (w.phase !== 'play' || self.activeTask !== null || !self.alive) return '';
+    if (self.under !== null) return t('hud.carpetUnder', { key: 'E' });
     const lines: string[] = [];
     if (self.canPack !== null) {
       lines.push(self.packCooldown > 0 ? t('hud.packWait', { seconds: Math.ceil(self.packCooldown) }) : t('hud.pack', { key: 'Q' }));
@@ -81,6 +82,7 @@ export function createHud(handlers: { onNewOffice(): void; onLangChange(lang: La
     if (p?.kind === 'pickup') return t('hud.pickup', { key: 'E' });
     if (p?.kind === 'deliver') return t('hud.deliver', { key: 'E' });
     if (p?.kind === 'button') return t('hud.button', { key: 'E' });
+    if (p?.kind === 'carpet') return t('hud.carpetIn', { key: 'E' });
     if (self.carrying !== null) {
       const box = w.boxes.find((b) => b.id === self.carrying);
       return box ? t('hud.carrying', { hint: cargoHint(w.tasks[box.task]!) }) : '';

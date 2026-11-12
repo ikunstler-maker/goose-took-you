@@ -6,10 +6,10 @@ import { FLOOR, type Level } from './level';
  * Walls, windows and distance block the view; furniture does not.
  * `out` has one byte per cell and is fully rewritten.
  */
-export function computeVisibility(level: Level, x: number, z: number, out: Uint8Array): void {
+export function computeVisibility(level: Level, x: number, z: number, out: Uint8Array, radius = VISION_RADIUS): void {
   const n = level.size;
   out.fill(0);
-  const r = VISION_RADIUS;
+  const r = radius;
   const x0 = Math.max(0, Math.floor(x - r));
   const x1 = Math.min(n - 1, Math.floor(x + r));
   const z0 = Math.max(0, Math.floor(z - r));

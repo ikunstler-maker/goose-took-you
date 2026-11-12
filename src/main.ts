@@ -2,12 +2,14 @@ import { TICK } from './config';
 import { createMinigameHost } from './minigames/host';
 import { createBoxes } from './render/boxes';
 import { createBroadcast, type BroadcastView } from './render/broadcast';
+import { createCarpets, type CarpetsView } from './render/carpets';
 import { createChicks } from './render/chicks';
 import { createTaskMarkers, type TaskMarkers } from './render/markers';
 import { buildOffice, type OfficeView } from './render/office';
 import { createStage } from './render/stage';
 import { setLang, t, type I18nKey } from './i18n';
 import { applyCommand, createWorld, LOCAL_PLAYER, me, step, type Command, type Role, type SimEvent, type WorldState } from './sim/world';
+import { linkToward } from './sim/carpets';
 import { createHud } from './ui/hud';
 import { createLobby } from './ui/lobby';
 import { createMatchScreens } from './ui/match';
@@ -27,6 +29,7 @@ let world: WorldState;
 let office: OfficeView | null = null;
 let markers: TaskMarkers | null = null;
 let broadcast: BroadcastView | null = null;
+let carpets: CarpetsView | null = null;
 
 function seedFromUrl(): number | null {
   const raw = new URLSearchParams(window.location.search).get('seed');
@@ -58,6 +61,12 @@ function rebuildOffice(): void {
   }
   broadcast = createBroadcast(world.level);
   stage.scene.add(broadcast.root);
+  if (carpets) {
+    stage.scene.remove(carpets.root);
+    carpets.dispose();
+  }
+  carpets = createCarpets(world);
+  stage.scene.add(carpets.root);
   stage.fitSun(world.level.size);
 }
 
@@ -159,6 +168,9 @@ function handle(events: SimEvent[]): void {
         hud.shout('cargo.slip');
         hud.setTasks(world);
         break;
+      case 'carpet':
+        hud.setTasks(world);
+        break;
       case 'bumped':
       case 'broadcastStarted':
       case 'meetingStarted':
@@ -213,6 +225,13 @@ const KEYS: Record<string, [number, number]> = {
   ArrowRight: [1, 0],
 };
 
+function crawlToward([right, up]: [number, number]): void {
+  const self = me(world);
+  const from = world.carpets[self.under!]!;
+  const to = linkToward(world.carpets, from, right - up, -right - up);
+  if (to !== null) send({ type: 'crawl', to });
+}
+
 function sendMove(): void {
   let right = 0;
   let up = 0;
@@ -242,6 +261,11 @@ window.addEventListener('keydown', (event) => {
   }
   if (!(event.code in KEYS)) return;
   event.preventDefault();
+  if (me(world).under !== null) {
+    // Under a rug the movement keys pick the linked rug that lies that way on screen.
+    if (!event.repeat) crawlToward(KEYS[event.code]!);
+    return;
+  }
   held.add(event.code);
   sendMove();
 });
@@ -282,6 +306,7 @@ function frame(now: number): void {
   markers?.update(time);
   boxes.update(world, time);
   broadcast?.update(world.broadcast, time);
+  carpets?.update(world, time);
   stage.follow(player.x, player.z, dt);
   stage.render();
   requestAnimationFrame(frame);
