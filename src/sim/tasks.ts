@@ -2,6 +2,7 @@ import { INTERACT_RANGE, TASKS_PER_PLAYER } from '../config';
 import type { Level } from './level';
 import type { PropKind, RoomType } from './prefabs';
 import { createRng } from './rng';
+import { propDistance } from './sabotage';
 
 /** Mini-game that completes a task. Folder names in `src/minigames/`. */
 export type TaskKind = 'modus' | 'copycat' | 'news' | 'cargo' | 'lines';
@@ -86,10 +87,7 @@ export function assignCargoTargets(level: Level, tasks: Task[], seed: number): v
 
 /** Distance from a point to the edge of a station's furniture. */
 export function stationDistance(level: Level, station: Station, x: number, z: number): number {
-  const prop = level.props[station.prop]!;
-  const dx = Math.max(Math.abs(x - prop.x) - prop.w / 2, 0);
-  const dz = Math.max(Math.abs(z - prop.z) - prop.d / 2, 0);
-  return Math.hypot(dx, dz);
+  return propDistance(level.props[station.prop]!, x, z);
 }
 
 /** The closest unfinished task of `owner` within reach, or null. */

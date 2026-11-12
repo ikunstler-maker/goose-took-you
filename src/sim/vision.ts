@@ -37,12 +37,12 @@ export function computeVisibility(level: Level, x: number, z: number, out: Uint8
   }
 }
 
-/** One observer sees a point: within VISION_RADIUS and no wall or window in between. */
-export function canSee(level: Level, ax: number, az: number, bx: number, bz: number): boolean {
+/** One observer sees a point: within `radius` and no wall or window in between. */
+export function canSee(level: Level, ax: number, az: number, bx: number, bz: number, radius = VISION_RADIUS): boolean {
   const dx = bx - ax;
   const dz = bz - az;
   const dist = Math.hypot(dx, dz);
-  if (dist > VISION_RADIUS) return false;
+  if (dist > radius) return false;
   const n = level.size;
   const steps = Math.ceil(dist / 0.4);
   for (let s = 1; s < steps; s++) {

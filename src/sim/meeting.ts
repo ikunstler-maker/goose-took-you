@@ -12,6 +12,7 @@ import { fitsIn } from './nav';
 import type { RoomType } from './prefabs';
 import { createRng, type Rng } from './rng';
 import { canSee } from './vision';
+import { endSabotage, sightRadius } from './sabotage';
 import type { Participant, SimEvent, WorldState } from './world';
 
 /** A vote for nobody. */
@@ -73,7 +74,7 @@ const roomType = (state: WorldState, roomId: number | null): RoomType | null =>
 export function noteDeed(state: WorldState, goose: Participant, victim: Participant | null, deed: 'pack' | 'carpet'): void {
   for (const p of state.participants) {
     if (!p.brain || p === goose || p === victim || !p.alive || p.role !== 'chick') continue;
-    if (!canSee(state.level, p.x, p.z, goose.x, goose.z)) continue;
+    if (!canSee(state.level, p.x, p.z, goose.x, goose.z, sightRadius(state))) continue;
     // A pack outweighs a rug sighting; never downgrade.
     if (p.brain.suspicion?.level === 2 && p.brain.suspicion.deed === 'pack' && deed === 'carpet') continue;
     p.brain.suspicion = { who: goose.id, level: 2, room: roomType(state, goose.roomId), deed };
@@ -85,7 +86,7 @@ export function noteBox(state: WorldState, bot: Participant, boxX: number, boxZ:
   if (!bot.brain || (bot.brain.suspicion && bot.brain.suspicion.level >= 1)) return;
   for (const o of state.participants) {
     if (o === bot || !o.alive || o.under !== null || Math.hypot(o.x - boxX, o.z - boxZ) > BOX_SUSPECT_RANGE) continue;
-    if (!canSee(state.level, bot.x, bot.z, o.x, o.z)) continue;
+    if (!canSee(state.level, bot.x, bot.z, o.x, o.z, sightRadius(state))) continue;
     bot.brain.suspicion = { who: o.id, level: 1, room: roomType(state, o.roomId), deed: 'box' };
     return;
   }
@@ -121,7 +122,8 @@ function seat(state: WorldState): void {
 
 /** Opens a meeting: the office freezes, boxes go away, everyone takes a seat. */
 export function startMeeting(state: WorldState, caller: Participant, victim: number | null): SimEvent[] {
-  const events: SimEvent[] = [];
+  // A meeting cuts the sabotage short; the Goose may start a new one afterwards.
+  const events: SimEvent[] = endSabotage(state, false);
   const rng = createRng(((state.level.seed * 6151 + state.tick * 31 + caller.id) >>> 0) || 1);
   // Where everyone was before the teleport: alibis are built from it.
   const roomsBefore = state.participants.map((p) => roomType(state, p.roomId));
@@ -175,7 +177,7 @@ function buddyOf(state: WorldState, p: Participant): number | null {
   for (const o of state.participants) {
     if (o === p || !o.alive || o.under !== null) continue;
     const d = Math.hypot(o.x - p.x, o.z - p.z);
-    if (d < bestD && canSee(state.level, p.x, p.z, o.x, o.z)) {
+    if (d < bestD && canSee(state.level, p.x, p.z, o.x, o.z, sightRadius(state))) {
       best = o.id;
       bestD = d;
     }

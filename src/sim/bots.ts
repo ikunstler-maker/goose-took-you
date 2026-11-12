@@ -38,13 +38,17 @@ import {
   GOOSE_TRUST_WINDOW,
   GOOSE_WHIM_CHANCE,
   GOOSE_WORK_SIGHT_ANGLE,
+  BOT_FIX_CHANCE,
+  GOOSE_SABOTAGE_MIN,
+  GOOSE_SABOTAGE_MAX,
   INTERACT_RANGE,
 } from '../config';
 import { cellCentre, findPath, fitsIn, nearestFree, type NavGrid } from './nav';
 import { createRng, type Rng } from './rng';
-import { stationDistance, WINDOW_TASKS } from './tasks';
+import { WINDOW_TASKS } from './tasks';
 import { meetingTable, noteBox, type Suspicion } from './meeting';
 import { canSee } from './vision';
+import { openFixPoints, propDistance, SABOTAGE_KINDS, sightRadius } from './sabotage';
 import type { Command, Participant, SimEvent, Thought, WorldState } from './world';
 
 /** What a bot is heading for. */
@@ -62,7 +66,9 @@ export type Goal =
   /** Goose: get to this rug to escape under it. */
   | { kind: 'carpet'; carpet: number }
   /** Chick: walk over to a vacation box it saw. */
-  | { kind: 'report'; box: number };
+  | { kind: 'report'; box: number }
+  /** Chick: run to a sabotage fix point (prop index). */
+  | { kind: 'fix'; point: number };
 
 /** A bot's plan; plain data so the whole world stays serialisable. */
 export interface Brain {
@@ -115,6 +121,8 @@ export interface Brain {
   hideLeft: number;
   hidden: number;
   crawled: boolean;
+  /** Goose only: seconds it still waits, once allowed, before starting a sabotage; -1 until rolled. */
+  sabotageIn: number;
   /** Chick only: what it saw that points at someone; brought up at the next meeting. */
   suspicion: Suspicion | null;
 }
@@ -147,6 +155,8 @@ export function createBrain(rng: Rng): Brain {
     spooked: false,
     bait: false,
     suspicion: null,
+    // Rolled on first use, so the brains' start-up rolls stay as they were.
+    sabotageIn: -1,
     escape: null,
     hideLeft: 0,
     hidden: 0,
@@ -159,9 +169,8 @@ type Send = (who: number, command: Command) => SimEvent[];
 const between = (rng: Rng, a: number, b: number): number => a + rng.next() * (b - a);
 
 /** Free cells next to a station, close enough to get its prompt, best first. */
-function standCells(state: WorldState, nav: NavGrid, stationId: number): number[] {
-  const station = state.stations[stationId]!;
-  const prop = state.level.props[station.prop]!;
+function standCells(state: WorldState, nav: NavGrid, propIndex: number): number[] {
+  const prop = state.level.props[propIndex]!;
   const found: { cell: number; d: number }[] = [];
   const reach = Math.ceil((Math.max(prop.w, prop.d) / 2 + INTERACT_RANGE) / nav.step) + 1;
   const cx = Math.floor(prop.x / nav.step);
@@ -174,7 +183,7 @@ function standCells(state: WorldState, nav: NavGrid, stationId: number): number[
       const cell = gz * nav.cols + gx;
       if (nav.free[cell] !== 1) continue;
       const c = cellCentre(nav, cell);
-      const d = stationDistance(state.level, station, c.x, c.z);
+      const d = propDistance(prop, c.x, c.z);
       if (d <= INTERACT_RANGE - 0.3) found.push({ cell, d });
     }
   }
@@ -198,7 +207,7 @@ function roomCell(state: WorldState, nav: NavGrid, roomId: number, rng: Rng): nu
 /** Nobody but the victim could see the Goose do it. */
 function unwatched(state: WorldState, goose: Participant, victim: Participant): boolean {
   return state.participants.every(
-    (o) => o === goose || o === victim || !o.alive || !canSee(state.level, o.x, o.z, goose.x, goose.z),
+    (o) => o === goose || o === victim || !o.alive || !canSee(state.level, o.x, o.z, goose.x, goose.z, sightRadius(state)),
   );
 }
 
@@ -215,7 +224,7 @@ export function gooseSees(state: WorldState, goose: Participant, other: Particip
   if (Math.hypot(other.x - goose.x, other.z - goose.z) > GOOSE_SIGHT_RANGE) return false;
   // Once it has picked its prey it keeps its eyes on it: only walls and distance lose it.
   if (!tracking && offHeading(goose.facing, goose.x, goose.z, other.x, other.z) > cone / 2) return false;
-  return canSee(state.level, goose.x, goose.z, other.x, other.z);
+  return canSee(state.level, goose.x, goose.z, other.x, other.z, sightRadius(state));
 }
 
 /** Somebody besides the prey is near it, or the prey looks right at the Goose. */
@@ -253,12 +262,25 @@ function seenVacation(state: WorldState, bot: Participant): number | null {
   for (const box of state.boxes) {
     if (box.kind !== 'vacation' || box.reported) continue;
     if (Math.hypot(box.x - bot.x, box.z - bot.z) > BOT_REPORT_SIGHT) continue;
-    if (canSee(state.level, bot.x, bot.z, box.x, box.z)) {
+    if (canSee(state.level, bot.x, bot.z, box.x, box.z, sightRadius(state))) {
       noteBox(state, bot, box.x, box.z);
       return box.id;
     }
   }
   return null;
+}
+
+/**
+ * The fix point this chick runs to, or null. Most chicks answer a sabotage, a few
+ * keep working; which ones is fixed per sabotage, and they spread over the points.
+ */
+function fixGoal(state: WorldState, bot: Participant): number | null {
+  const sabotage = state.sabotage;
+  if (!sabotage) return null;
+  const roll = (((sabotage.id + 1) * 2654435761 + bot.id * 40503) >>> 0) % 1000;
+  if (roll >= BOT_FIX_CHANCE * 1000) return null;
+  const open = openFixPoints(state, bot);
+  return open.length > 0 ? open[bot.id % open.length]! : null;
 }
 
 function chooseGoal(state: WorldState, bot: Participant, avoid: number | null): Goal {
@@ -274,6 +296,8 @@ function chooseGoal(state: WorldState, bot: Participant, avoid: number | null): 
   if (seen !== null) return { kind: 'report', box: seen };
   const sure = bot.brain?.suspicion?.level === 2 && state.participants[bot.brain.suspicion.who]!.alive;
   if (sure && bot.buttonUses > 0 && state.buttonCooldown === 0 && bot.carrying === null) return { kind: 'button' };
+  const fix = fixGoal(state, bot);
+  if (fix !== null) return { kind: 'fix', point: fix };
   if (bot.carrying !== null) {
     const box = state.boxes.find((b) => b.id === bot.carrying)!;
     return { kind: 'deliver', task: box.task };
@@ -289,7 +313,7 @@ function destinations(state: WorldState, nav: NavGrid, bot: Participant, goal: G
   switch (goal.kind) {
     case 'task': {
       // Spread the tries around the desk: some spots near it can be closed-in pockets.
-      const cells = standCells(state, nav, state.tasks[goal.task]!.station);
+      const cells = standCells(state, nav, state.stations[state.tasks[goal.task]!.station]!.prop);
       const picks: number[] = [];
       for (let i = 0; i < cells.length && picks.length < STAND_TRIES; i += Math.max(1, Math.floor(cells.length / STAND_TRIES))) {
         picks.push(cells[i]!);
@@ -328,13 +352,15 @@ function destinations(state: WorldState, nav: NavGrid, bot: Participant, goal: G
       return [nearestFree(nav, c.x, c.z, 2)];
     }
     case 'pose': {
-      const cells = standCells(state, nav, state.tasks[goal.task]!.station);
+      const cells = standCells(state, nav, state.stations[state.tasks[goal.task]!.station]!.prop);
       return cells.slice(0, STAND_TRIES);
     }
     case 'report': {
       const box = state.boxes.find((b) => b.id === goal.box);
       return box ? [nearestFree(nav, box.x, box.z, 4)] : [];
     }
+    case 'fix':
+      return standCells(state, nav, goal.point).slice(0, STAND_TRIES);
   }
 }
 
@@ -351,6 +377,7 @@ function promptFits(bot: Participant, goal: Goal): boolean {
   if (goal.kind === 'pickup') return p.kind === 'pickup' && p.box === goal.box;
   if (goal.kind === 'button') return p.kind === 'button';
   if (goal.kind === 'carpet') return p.kind === 'carpet' && p.carpet === goal.carpet;
+  if (goal.kind === 'fix') return p.kind === 'fix' && p.point === goal.point;
   return false;
 }
 
@@ -421,6 +448,15 @@ function gooseMind(
   brain.calm = Math.max(0, brain.calm - dt);
   brain.alibi = Math.max(0, brain.alibi - dt);
   if (brain.poseTask === null) brain.poseTask = pickPose(state, bot, rng);
+  // Sabotage whenever it is allowed, after a pause of its own.
+  if (!state.sabotage && state.sabotageCooldown === 0) {
+    if (brain.sabotageIn < 0) brain.sabotageIn = between(rng, GOOSE_SABOTAGE_MIN, GOOSE_SABOTAGE_MAX);
+    brain.sabotageIn -= dt;
+    if (brain.sabotageIn <= 0) {
+      brain.sabotageIn = -1;
+      events.push(...send(bot.id, { type: 'sabotage', kind: SABOTAGE_KINDS[rng.int(SABOTAGE_KINDS.length)]! }));
+    }
+  }
 
   if (brain.prey !== null) {
     const prey = state.participants[brain.prey]!;

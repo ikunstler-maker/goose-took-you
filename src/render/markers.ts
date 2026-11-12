@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { MARKER_HEIGHT } from '../config';
-import { LOCAL_PLAYER, type WorldState } from '../sim/world';
+import { openFixPoints } from '../sim/sabotage';
+import { LOCAL_PLAYER, me, type WorldState } from '../sim/world';
 import { cone, mat } from './kit';
 
 export interface TaskMarkers {
@@ -27,6 +28,19 @@ export function createTaskMarkers(world: WorldState): TaskMarkers {
     arrows.set(task.id, arrow);
     root.add(arrow);
   }
+  // Red arrows over the sabotage fix points; shown only while the player can help there.
+  const alarmMaterial = mat(0xff4a3d, { emissive: 0x8a1a10 });
+  const fixes = new Map<number, THREE.Mesh>();
+  for (const point of [...world.fixPoints.overheat, ...world.fixPoints.call]) {
+    const prop = world.level.props[point]!;
+    const arrow = cone(0.3, 0.56, alarmMaterial, prop.x, MARKER_HEIGHT + 0.3, prop.z);
+    arrow.rotation.x = Math.PI;
+    arrow.castShadow = false;
+    arrow.receiveShadow = false;
+    arrow.visible = false;
+    fixes.set(point, arrow);
+    root.add(arrow);
+  }
   const markers: TaskMarkers = {
     root,
     refresh(next) {
@@ -34,12 +48,18 @@ export function createTaskMarkers(world: WorldState): TaskMarkers {
         const arrow = arrows.get(task.id);
         if (arrow) arrow.visible = !task.done && !task.started;
       }
+      const open = next.phase === 'play' ? openFixPoints(next, me(next)) : [];
+      for (const [point, arrow] of fixes) arrow.visible = open.includes(point);
     },
     update(time) {
       let i = 0;
       for (const arrow of arrows.values()) {
         arrow.position.y = MARKER_HEIGHT + Math.sin(time * 3 + i++) * 0.12;
         arrow.rotation.y = time * 1.5;
+      }
+      for (const arrow of fixes.values()) {
+        arrow.position.y = MARKER_HEIGHT + 0.3 + Math.abs(Math.sin(time * 5)) * 0.25;
+        arrow.rotation.y = time * 3;
       }
     },
     dispose() {

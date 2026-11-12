@@ -122,4 +122,11 @@ Entry format (≤8 lines):
 - Verify: count climbs to 6/6 and the Giant Green Button enables.
 - Seen: 2026-11-12
 
+### Unrelated bot tests fail after touching `createBrain`
+- Symptom: `goose.test.ts` «gives the Goose the win…» packs 1 chick instead of 6 after adding a Brain field.
+- Root cause: an extra `rng` draw in `createBrain` shifts every bot's start-up rolls, so bots act differently on fixed seeds.
+- Fix: initialise new Brain fields with a constant (e.g. `-1`) and roll them on first use inside `thinkBot`/`gooseMind`.
+- Verify: `npm run test` — all files green with no test edits.
+- Seen: 2026-11-12
+
 ## CI
