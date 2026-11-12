@@ -79,6 +79,14 @@ Entry format (≤8 lines):
 
 ## Mini-games
 
+### New hub prop breaks reachability
+- Symptom: `keeps every room and almost all free floor reachable` fails for one seed (e.g. «seed 28: expected 0.67 > 0.97»).
+- Root cause: a hub prop next to a corner plant left a sub-2 m slit where a door can open; the room behind it got cut off.
+- Fix: place hub props ≥2 m from other hub furniture along walls (`briefTablet` moved to x 0.6 in `prefabs.ts`).
+- Verify: `npx vitest run src/sim/level.test.ts`.
+- Seen: 2026-11-12
+
+
 ### Mini-game won but never closes
 - Symptom: counter shows the target (e.g. «15 / 15») but the «Готово!» banner never appears and the task stays undone.
 - Root cause: the win check compared status before/after `tick`, but the winning move came from input between ticks.

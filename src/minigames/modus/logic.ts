@@ -11,7 +11,7 @@ import {
 import { createRng, type Rng } from '../../sim/rng';
 
 /** Number of edit phrases in i18n (`minigame.modus.note1..N`). */
-export const MODUS_NOTES = 8;
+export const MODUS_NOTES = 11;
 
 export interface Sticker {
   id: number;

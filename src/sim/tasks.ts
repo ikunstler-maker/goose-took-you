@@ -4,7 +4,7 @@ import type { PropKind, RoomType } from './prefabs';
 import { createRng } from './rng';
 
 /** Mini-game that completes a task. Folder names in `src/minigames/`. */
-export type TaskKind = 'modus' | 'copycat' | 'news' | 'cargo';
+export type TaskKind = 'modus' | 'copycat' | 'news' | 'cargo' | 'lines';
 
 /** Hub furniture that hosts each task kind. */
 export const STATION_PROPS: Record<TaskKind, PropKind> = {
@@ -12,10 +12,11 @@ export const STATION_PROPS: Record<TaskKind, PropKind> = {
   copycat: 'deskCopy',
   news: 'dualStation',
   cargo: 'shelf',
+  lines: 'briefTablet',
 };
 
 /** Tasks that open a mini-game window; the rest are done in the office itself. */
-export const WINDOW_TASKS: readonly TaskKind[] = ['modus', 'copycat', 'news'];
+export const WINDOW_TASKS: readonly TaskKind[] = ['modus', 'copycat', 'news', 'lines'];
 
 /** Rooms a cargo box can be ordered to; the task list gives only a vague hint. */
 export const CARGO_DESTINATIONS: readonly RoomType[] = ['lounge', 'greenhouse'];
