@@ -669,3 +669,170 @@ button:hover {
   cursor: default;
   filter: saturate(0.6);
 }
+
+/* Lines */
+.lines-brief {
+  margin: 6px 0 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #fff1d6;
+  font-size: 14px;
+}
+
+.lines-main {
+  display: flex;
+  gap: 12px;
+}
+
+.lines-canvas {
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 2px #e3d6b8;
+  touch-action: none;
+}
+
+.lines-check {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.lines-check ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lines-check li {
+  margin: 3px 0;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: #f1e7d2;
+}
+
+.lines-check li::before {
+  content: '○ ';
+}
+
+.lines-check li.met {
+  background: #c9f0bd;
+}
+
+.lines-check li.met::before {
+  content: '✓ ';
+  font-weight: 900;
+}
+
+.lines-submit {
+  margin-top: auto;
+  padding: 12px 8px;
+  background: #3fbf4a;
+  color: #fff;
+  font-weight: 900;
+}
+
+.lines-submit:disabled {
+  background: #b9c2b4;
+  cursor: default;
+  filter: none;
+}
+
+.lines-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.lines-tools .lt {
+  padding: 6px 9px;
+  font-size: 12px;
+  background: #f0e4c8;
+}
+
+.lines-tools .lt.active {
+  outline: 3px solid var(--ink);
+}
+
+.lines-tools .ink {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 50%;
+}
+
+.lines-tools .ink-red {
+  background: #e8364a;
+}
+
+.lines-tools .ink-green {
+  background: #2fae45;
+}
+
+.lines-tools .ink-blue {
+  background: #3f7bff;
+}
+
+.lines-tools .ink-clear {
+  background: repeating-linear-gradient(45deg, #fff, #fff 4px, #d7dbe6 4px, #d7dbe6 8px);
+}
+
+.lines-tools .tag-red {
+  background: #ffd3d8;
+}
+
+.lines-tools .tag-green {
+  background: #d3f3d8;
+}
+
+.lines-tools .tag-blue {
+  background: #d6e2ff;
+}
+
+.lines-tools .force {
+  background: #fff;
+  color: #c0263a;
+  border: 2px solid #c0263a;
+}
+
+.lines-tools .undo {
+  margin-left: auto;
+}
+
+.lines-client {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 8px 30px rgba(40, 28, 10, 0.35);
+  animation: client-in 0.3s ease-out;
+}
+
+@keyframes client-in {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+}
+
+.lines-client[hidden] {
+  display: none;
+}
+
+.lines-client canvas {
+  width: 72px;
+  height: 72px;
+}
+
+.lines-client p {
+  margin: 0;
+  max-width: 220px;
+  font-weight: 900;
+  font-size: 16px;
+}

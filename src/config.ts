@@ -47,7 +47,7 @@ export const CAMERA_ZOOM_DEFAULT = 6.5;
 export const CAMERA_FOLLOW_RATE = 6;
 
 /** Tasks: how many each participant gets and how close the chick must stand to a station, metres. */
-export const TASKS_PER_PLAYER = 4;
+export const TASKS_PER_PLAYER = 5;
 export const INTERACT_RANGE = 1.2;
 
 /** Mini-game «Відбитись від правок Модуса». */
@@ -97,3 +97,17 @@ export const BOX_SLIP_MIN = 6;
 export const BOX_SLIP_MAX = 26;
 /** Side of a cargo box, metres. */
 export const BOX_SIZE = 0.55;
+
+/** Mini-game «Сім червоних перпендикулярних ліній». */
+export const LINES_COUNT = 7;
+/** A new line snaps to exactly 90° when it is within this many degrees of perpendicular to a drawn line. */
+export const LINES_SNAP_DEG = 12;
+/** Two lines count as perpendicular when their angle is within this of 90°. */
+export const LINES_PERP_TOLERANCE_DEG = 1;
+export const LINES_KITTEN_CHANCE = 0.65;
+/** Shortest stroke that counts as a line, canvas pixels. */
+export const LINES_MIN_LENGTH = 30;
+/** How close a click must be to a line to stamp it, canvas pixels. */
+export const LINES_HIT_RADIUS = 12;
+/** How long the pleased client stays on screen before the task closes, seconds. */
+export const LINES_CLIENT_PAUSE = 1.8;

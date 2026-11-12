@@ -2,6 +2,7 @@ import { MINIGAME_DONE_PAUSE } from '../config';
 import { t } from '../i18n';
 import type { TaskKind } from '../sim/tasks';
 import { createCopycatView } from './copycat/view';
+import { createLinesView } from './lines/view';
 import { createModusView } from './modus/view';
 import { createNewsView } from './news/view';
 import type { MinigameFactory, MinigameView } from './types';
@@ -11,6 +12,7 @@ const FACTORIES: Partial<Record<TaskKind, MinigameFactory>> = {
   modus: createModusView,
   copycat: createCopycatView,
   news: createNewsView,
+  lines: createLinesView,
 };
 
 export interface MinigameHost {

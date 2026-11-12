@@ -56,7 +56,8 @@ export type PropKind =
   | 'palm'
   | 'cactus'
   | 'crates'
-  | 'ringLight';
+  | 'ringLight'
+  | 'briefTablet';
 
 /** Quarter turns: 0 = front faces south (+z), 1 = east, 2 = north, 3 = west. */
 export type Rot = 0 | 1 | 2 | 3;
@@ -164,6 +165,7 @@ export const PREFABS: Record<RoomType, PrefabProp[]> = {
   meeting: [
     p('meetingTable', 0, 0, 3.4, 3.4),
     p('kanban', -3.7, -5.5, 3.2, 0.3),
+    p('briefTablet', 0.6, -5.2, 1.2, 0.6),
     p('stool', -2.4, 0, 0.5, 0.5),
     p('stool', 2.4, 0, 0.5, 0.5),
     p('stool', 0, -2.4, 0.5, 0.5),

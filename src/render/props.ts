@@ -263,6 +263,27 @@ function drawSticker(ctx: CanvasRenderingContext2D, w: number, h: number): void 
   ctx.fillText(words.slice(mid).join(' '), w / 2, h * 0.66);
 }
 
+function drawBrief(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+  ctx.fillStyle = '#fbf7ef';
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = '#3a2a14';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `800 ${h * 0.13}px system-ui, sans-serif`;
+  ctx.fillText(t('decor.brief'), w / 2, h * 0.14, w * 0.92);
+  // Seven "perpendicular" red lines, as promised to the client.
+  ctx.strokeStyle = '#e8364a';
+  ctx.lineWidth = h * 0.03;
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 7; i++) {
+    const a = (i * Math.PI) / 7;
+    ctx.beginPath();
+    ctx.moveTo(w / 2 - Math.cos(a) * w * 0.3, h * 0.6 - Math.sin(a) * h * 0.3);
+    ctx.lineTo(w / 2 + Math.cos(a) * w * 0.3, h * 0.6 + Math.sin(a) * h * 0.3);
+    ctx.stroke();
+  }
+}
+
 function drawUrgent(ctx: CanvasRenderingContext2D, w: number, h: number): void {
   ctx.fillStyle = '#e5433d';
   ctx.fillRect(0, 0, w, h);
@@ -425,6 +446,18 @@ const BUILDERS: Record<PropKind, (variant: number) => THREE.Group> = {
   },
 
   crates: () => group(at(cardboardBox(0.8), -0.45, 0, 0, 0.1), at(cardboardBox(0.78), 0.45, 0, 0.05, -0.15), at(cardboardBox(0.6), -0.1, 0.8, 0, 0.4)),
+
+  briefTablet: () => {
+    const panel = screen(0.9, 0.6, drawBrief, 0.35);
+    const tilt = group(box(0.98, 0.68, 0.05, DARK, 0, 0, -0.03), at(panel, 0, 0, 0.001));
+    tilt.position.set(0, 1.12, 0);
+    tilt.rotation.x = -0.75;
+    return group(
+      box(0.7, 0.06, 0.45, DARK, 0, 0.03, 0),
+      cylinder(0.05, 0.05, 1.05, METAL, 0, 0.55, 0, 8),
+      tilt,
+    );
+  },
 
   ringLight: () => {
     const ring = new THREE.Mesh(RING_LIGHT, glow(0xfff4d6));
