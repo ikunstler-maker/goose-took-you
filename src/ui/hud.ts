@@ -1,6 +1,7 @@
 import { getLang, setLang, t, type I18nKey, type Lang } from '../i18n';
 import type { RoomType } from '../sim/prefabs';
 import type { Task } from '../sim/tasks';
+import { fixesNeeded } from '../sim/sabotage';
 import { LOCAL_PLAYER, me, progress, type WorldState } from '../sim/world';
 
 export interface Hud {
@@ -10,6 +11,8 @@ export interface Hud {
   setTasks(world: WorldState): void;
   /** Short shout bubble in the middle of the screen, e.g. a slipping box. */
   shout(key: I18nKey, params?: Record<string, string | number>): void;
+  /** Sabotage banner with its countdown and the Goose's sabotage line; cheap to call every frame. */
+  setAlarm(world: WorldState): void;
 }
 
 const el = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -24,6 +27,13 @@ export function createHud(handlers: { onNewOffice(): void; onLangChange(lang: La
   const tasksList = document.querySelector('#tasks ul') as HTMLElement;
   const prompt = el('prompt');
   const shoutEl = el('shout');
+  const alarm = el('alarm');
+  const alarmTitle = alarm.querySelector('strong') as HTMLElement;
+  const alarmText = alarm.querySelector('span') as HTMLElement;
+  const alarmFill = alarm.querySelector('.fill') as HTMLElement;
+  const sabotageLine = document.querySelector('#tasks .sabotage') as HTMLElement;
+  let alarmShown = '';
+  let sabotageShown = '';
   let shoutTimer = 0;
   let room: RoomType | null = null;
   let seed = 0;
@@ -78,6 +88,7 @@ export function createHud(handlers: { onNewOffice(): void; onLangChange(lang: La
   const mainPrompt = (w: WorldState): string => {
     const self = me(w);
     const p = self.prompt;
+    if (p?.kind === 'fix' && w.sabotage) return t(`hud.fix.${w.sabotage.kind}`, { key: 'E' });
     if (p?.kind === 'task') return t('hud.interact', { key: 'E', task: t(`task.${w.tasks[p.task]!.kind}`) });
     if (p?.kind === 'pickup') return t('hud.pickup', { key: 'E' });
     if (p?.kind === 'deliver') return t('hud.deliver', { key: 'E' });
@@ -90,6 +101,36 @@ export function createHud(handlers: { onNewOffice(): void; onLangChange(lang: La
     return '';
   };
 
+  const drawAlarm = (w: WorldState): void => {
+    const s = w.phase === 'play' ? w.sabotage : null;
+    const text = s
+      ? t(`sabotage.${s.kind}Hint`, { done: s.done.length, need: fixesNeeded(w, s.kind), seconds: Math.max(0, Math.ceil(s.left)) })
+      : '';
+    if (text !== alarmShown) {
+      alarmShown = text;
+      alarm.hidden = !s;
+      if (s) {
+        alarmTitle.textContent = t(`sabotage.${s.kind}`);
+        alarmText.textContent = text;
+      }
+    }
+    if (s) alarmFill.style.width = `${Math.max(0, (s.left / s.total) * 100)}%`;
+    const self = me(w);
+    const line =
+      w.phase !== 'play' || self.role !== 'goose' || !self.alive
+        ? ''
+        : w.sabotage
+          ? t('hud.sabotage.active')
+          : w.sabotageCooldown > 0
+            ? t('hud.sabotage.wait', { seconds: Math.ceil(w.sabotageCooldown) })
+            : t('hud.sabotage.ready');
+    if (line !== sabotageShown) {
+      sabotageShown = line;
+      sabotageLine.textContent = line;
+      sabotageLine.hidden = line === '';
+    }
+  };
+
   const refresh = (): void => {
     document.title = t('app.title');
     document.documentElement.lang = getLang() === 'ua' ? 'uk' : 'ru';
@@ -99,6 +140,9 @@ export function createHud(handlers: { onNewOffice(): void; onLangChange(lang: La
     newOffice.textContent = t('hud.newOffice');
     roomName.textContent = room ? t(`room.${room}`) : t('room.corridor');
     drawTasks();
+    alarmShown = '';
+    sabotageShown = '';
+    if (world) drawAlarm(world);
     for (const button of langButtons) {
       button.setAttribute('aria-pressed', String(button.dataset.lang === getLang()));
     }
@@ -133,6 +177,10 @@ export function createHud(handlers: { onNewOffice(): void; onLangChange(lang: La
     setTasks(value) {
       world = value;
       drawTasks();
+    },
+    setAlarm(value) {
+      world = value;
+      drawAlarm(value);
     },
     shout(key, params) {
       shoutEl.textContent = t(key, params);

@@ -6,6 +6,12 @@ import {
   CAMERA_ZOOM_DEFAULT,
   CAMERA_ZOOM_MAX,
   CAMERA_ZOOM_MIN,
+  GLOOM_FADE,
+  GLOOM_SKY,
+  GLOOM_SKY_LIGHT,
+  GLOOM_SUN_LIGHT,
+  SKY_LIGHT,
+  SUN_LIGHT,
 } from '../config';
 
 export interface Stage {
@@ -19,6 +25,8 @@ export interface Stage {
   fitSun(size: number): void;
   /** Redraws the sun's shadow map on the next frame; it is static otherwise. */
   refreshShadows(): void;
+  /** Eases the lights towards day (0) or the overheat blackout (1). */
+  setGloom(target: number, dt: number): void;
   render(): void;
 }
 
@@ -35,8 +43,12 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0xbfe6ff);
 
-  scene.add(new THREE.HemisphereLight(0xf2f9ff, 0xe6d3a3, 1.9));
-  const sun = new THREE.DirectionalLight(0xfff0cf, 2.4);
+  const sky = new THREE.HemisphereLight(0xf2f9ff, 0xe6d3a3, SKY_LIGHT);
+  scene.add(sky);
+  const dayColor = new THREE.Color(0xbfe6ff);
+  const gloomColor = new THREE.Color(GLOOM_SKY);
+  let gloom = 0;
+  const sun = new THREE.DirectionalLight(0xfff0cf, SUN_LIGHT);
   sun.castShadow = true;
   sun.shadow.mapSize.set(4096, 4096);
   sun.shadow.bias = -0.0004;
@@ -102,6 +114,14 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
       shadowCamera.far = 160;
       shadowCamera.updateProjectionMatrix();
       renderer.shadowMap.needsUpdate = true;
+    },
+    setGloom(target, dt) {
+      if (gloom === target) return;
+      const step = dt / GLOOM_FADE;
+      gloom = target > gloom ? Math.min(target, gloom + step) : Math.max(target, gloom - step);
+      sky.intensity = SKY_LIGHT + (GLOOM_SKY_LIGHT - SKY_LIGHT) * gloom;
+      sun.intensity = SUN_LIGHT + (GLOOM_SUN_LIGHT - SUN_LIGHT) * gloom;
+      (scene.background as THREE.Color).copy(dayColor).lerp(gloomColor, gloom);
     },
     refreshShadows() {
       renderer.shadowMap.needsUpdate = true;

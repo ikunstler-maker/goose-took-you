@@ -123,6 +123,12 @@ function handle(events: SimEvent[]): void {
       markers?.refresh(world);
       if (event.ejected === LOCAL_PLAYER) screens.showPacked(world);
     }
+    // Sabotages concern everyone, whoever started or fixed them.
+    if (event.type === 'sabotageStarted' || event.type === 'sabotageFixed' || event.type === 'sabotageEnded') {
+      hud.setTasks(world);
+      markers?.refresh(world);
+      if (event.type === 'sabotageEnded' && event.fixed) hud.shout(`sabotage.fixed.${event.kind}`);
+    }
     if (event.type === 'packed') {
       if (event.victim === LOCAL_PLAYER) {
         minigames.close();
@@ -172,6 +178,7 @@ function handle(events: SimEvent[]): void {
         hud.setTasks(world);
         break;
       case 'bumped':
+      case 'sabotageFixed':
       case 'broadcastStarted':
       case 'meetingStarted':
       case 'meetingStage':
@@ -255,6 +262,10 @@ window.addEventListener('keydown', (event) => {
     send({ type: 'pack' });
     return;
   }
+  if ((event.code === 'Digit1' || event.code === 'Digit2') && !event.repeat && !minigames.isOpen()) {
+    send({ type: 'sabotage', kind: event.code === 'Digit1' ? 'overheat' : 'call' });
+    return;
+  }
   if (event.code === 'KeyR' && !event.repeat && !minigames.isOpen()) {
     send({ type: 'report' });
     return;
@@ -298,6 +309,8 @@ function frame(now: number): void {
   }
 
   if (world.phase === 'meeting') meeting.update(world);
+  hud.setAlarm(world);
+  stage.setGloom(world.sabotage?.kind === 'overheat' && world.phase === 'play' ? 1 : 0, dt);
 
   const time = now / 1000;
   const player = me(world);

@@ -20,6 +20,8 @@ import {
   TELL_BUBBLE_RANGE,
   TELL_MAX,
   TELL_MIN,
+  TELL_SABOTAGE_RATE,
+  SABOTAGE_COOLDOWN,
   TELL_TIME,
   THOUGHT_TIME,
   PLAYER_RADIUS,
@@ -45,6 +47,16 @@ import {
 import { castVote, meetingTable, noteDeed, startMeeting, stepMeeting, type Meeting } from './meeting';
 import { carpetInReach, placeCarpets, type Carpet } from './carpets';
 import { computeVisibility } from './vision';
+import {
+  findFixPoints,
+  fixInReach,
+  fixSabotage,
+  sightRadius,
+  startSabotage,
+  type FixPoints,
+  type Sabotage,
+  type SabotageKind,
+} from './sabotage';
 
 /** What the chick's face shows; driven by what just happened to it. */
 export type Emotion = 'calm' | 'happy' | 'dizzy' | 'surprised' | 'bored';
@@ -60,7 +72,9 @@ export type Prompt =
   /** The red «ТЕРМІНОВИЙ СОЗВОН» button on the meeting table. */
   | { kind: 'button' }
   /** Goose: dive under this rug. */
-  | { kind: 'carpet'; carpet: number };
+  | { kind: 'carpet'; carpet: number }
+  /** Restart a fan or sign the NDA while a sabotage runs; `point` is a prop index. */
+  | { kind: 'fix'; point: number };
 
 /** A chick, or the Goose disguised as one. */
 export type Role = 'chick' | 'goose';
@@ -150,6 +164,14 @@ export interface WorldState {
   meeting: Meeting | null;
   /** Seconds until the red button can be pressed again. */
   buttonCooldown: number;
+  /** Where sabotages are fixed. */
+  fixPoints: FixPoints;
+  /** The sabotage in progress, or null. */
+  sabotage: Sabotage | null;
+  /** Seconds until the Goose may start the next sabotage. */
+  sabotageCooldown: number;
+  /** The sabotage that ran out and won the match for the Goose, or null. */
+  lostTo: SabotageKind | null;
   /** Debug/testing: the local player's role at the start instead of a random one. */
   forcedRole: Role | null;
   tick: number;
@@ -172,7 +194,9 @@ export type Command =
   /** At a meeting: vote for a participant id, or SKIP_VOTE. */
   | { type: 'vote'; target: number }
   /** Goose under a rug: crawl to a linked rug. */
-  | { type: 'crawl'; to: number };
+  | { type: 'crawl'; to: number }
+  /** Goose: start a sabotage. */
+  | { type: 'sabotage'; kind: SabotageKind };
 
 export type SimEvent =
   | { type: 'roomChanged'; who: number; roomId: number | null }
@@ -197,6 +221,10 @@ export type SimEvent =
   | { type: 'chat'; who: number }
   | { type: 'voted'; who: number }
   | { type: 'meetingEnded'; ejected: number | null }
+  | { type: 'sabotageStarted'; who: number; kind: SabotageKind }
+  | { type: 'sabotageFixed'; who: number; kind: SabotageKind; point: number }
+  /** `fixed` is false when a meeting cut the sabotage short. */
+  | { type: 'sabotageEnded'; kind: SabotageKind; fixed: boolean }
   | { type: 'gameOver'; winner: Winner };
 
 /** The participant this browser controls. */
@@ -316,6 +344,10 @@ export function createWorld(
     winner: null,
     meeting: null,
     buttonCooldown: BUTTON_COOLDOWN,
+    fixPoints: findFixPoints(level),
+    sabotage: null,
+    sabotageCooldown: SABOTAGE_COOLDOWN,
+    lostTo: null,
     forcedRole,
     tick: 0,
   };
@@ -362,6 +394,12 @@ export function applyCommand(state: WorldState, who: number, command: Command): 
       return state.phase === 'play' ? report(state, actor) : [];
     case 'crawl':
       return state.phase === 'play' ? crawl(state, actor, command.to) : [];
+    case 'sabotage': {
+      if (state.phase !== 'play') return [];
+      const events = startSabotage(state, actor, command.kind);
+      if (events.length > 0) refreshVision(state);
+      return events;
+    }
     case 'vote':
       return state.phase === 'meeting' ? castVote(state, actor, command.target) : [];
     case 'think':
@@ -437,7 +475,9 @@ function report(state: WorldState, actor: Participant): SimEvent[] {
   box.reported = true;
   actor.canReport = null;
   const events: SimEvent[] = [{ type: 'reported', who: actor.id, boxId: box.id, victim: box.inside! }];
-  return events.concat(startMeeting(state, actor, box.inside!));
+  events.push(...startMeeting(state, actor, box.inside!));
+  refreshVision(state);
+  return events;
 }
 
 /** Vacation box ids sit above every task id. */
@@ -466,6 +506,10 @@ function checkWin(state: WorldState, events: SimEvent[]): void {
   let winner: Winner | null = null;
   if (geese === 0) winner = 'chicks';
   else if (chicks <= geese) winner = 'goose';
+  else if (state.sabotage && state.sabotage.left <= 0) {
+    winner = 'goose';
+    state.lostTo = state.sabotage.kind;
+  }
   else if (progress(state) >= 1) winner = 'chicks';
   if (!winner) return;
   state.phase = 'over';
@@ -493,7 +537,8 @@ function completeTask(state: WorldState, actor: Participant, task: Task): SimEve
 /** The local player's sight: shorter while hiding under a rug. */
 function refreshVision(state: WorldState): void {
   const self = me(state);
-  computeVisibility(state.level, self.x, self.z, state.visible, self.under !== null ? CARPET_VISION : undefined);
+  const radius = self.under !== null ? Math.min(CARPET_VISION, sightRadius(state)) : sightRadius(state);
+  computeVisibility(state.level, self.x, self.z, state.visible, radius);
   state.visibleVersion++;
 }
 
@@ -525,12 +570,19 @@ function interact(state: WorldState, actor: Participant): SimEvent[] {
   }
   const prompt = actor.prompt;
   if (actor.activeTask !== null || prompt === null) return [];
+  if (prompt.kind === 'fix') {
+    const events = fixSabotage(state, actor, prompt.point);
+    if (!state.sabotage) refreshVision(state);
+    return events;
+  }
   if (prompt.kind === 'carpet') {
     return actor.carpetCooldown > 0 ? [] : carpetAction(state, actor, state.carpets[prompt.carpet]!, 'in');
   }
   if (prompt.kind === 'button') {
     actor.buttonUses--;
-    return startMeeting(state, actor, null);
+    const events = startMeeting(state, actor, null);
+    refreshVision(state);
+    return events;
   }
   if (prompt.kind === 'deliver') {
     const task = state.tasks[prompt.task]!;
@@ -573,6 +625,9 @@ function interact(state: WorldState, actor: Participant): SimEvent[] {
 
 function computePrompt(state: WorldState, actor: Participant): Prompt | null {
   if (actor.under !== null) return null;
+  // A sabotage comes before everything else, box in the wings or not.
+  const fix = fixInReach(state, actor);
+  if (fix !== null) return { kind: 'fix', point: fix };
   if (actor.carrying !== null) {
     const box = state.boxes.find((b) => b.id === actor.carrying)!;
     const task = state.tasks[box.task]!;
@@ -591,7 +646,8 @@ function computePrompt(state: WorldState, actor: Participant): Prompt | null {
 
 /** Next to the meeting table, with a press left and the button cooled down. */
 function canPressButton(state: WorldState, actor: Participant): boolean {
-  if (!actor.alive || actor.buttonUses <= 0 || state.buttonCooldown > 0) return false;
+  // No calling a meeting to dodge a sabotage: fix it first.
+  if (!actor.alive || actor.buttonUses <= 0 || state.buttonCooldown > 0 || state.sabotage) return false;
   const table = meetingTable(state);
   return table !== null && Math.hypot(actor.x - table.x, actor.z - table.z) <= table.radius + INTERACT_RANGE;
 }
@@ -650,10 +706,7 @@ function stepParticipant(state: WorldState, p: Participant, dt: number, events: 
     }
 
     const crossed = Math.floor(fromX * 4) !== Math.floor(p.x * 4) || Math.floor(fromZ * 4) !== Math.floor(p.z * 4);
-    if (p.id === LOCAL_PLAYER && crossed) {
-      computeVisibility(level, p.x, p.z, state.visible);
-      state.visibleVersion++;
-    }
+    if (p.id === LOCAL_PLAYER && crossed) refreshVision(state);
   } else {
     p.idleTime += dt;
     p.runTime = 0;
@@ -695,7 +748,8 @@ function stepParticipant(state: WorldState, p: Participant, dt: number, events: 
     p.packCooldown = Math.max(0, p.packCooldown - dt);
     if (p.tell > 0) p.tell = Math.max(0, p.tell - dt);
     else {
-      p.tellIn -= dt;
+      // A sabotage makes the Goose nervous: the neck gives it away more often.
+      p.tellIn -= dt * (state.sabotage ? TELL_SABOTAGE_RATE : 1);
       if (p.tellIn <= 0) {
         p.tell = TELL_TIME;
         p.tellIn = TELL_MIN + ((state.tick * 7919 + p.id * 31) % 1000) / 1000 * (TELL_MAX - TELL_MIN);
@@ -716,6 +770,7 @@ function endMeeting(state: WorldState, events: SimEvent[]): void {
   state.meeting = null;
   state.phase = 'play';
   state.buttonCooldown = BUTTON_COOLDOWN;
+  state.sabotageCooldown = SABOTAGE_COOLDOWN;
   for (const p of state.participants) {
     if (p.role !== 'goose') continue;
     p.packCooldown = Math.max(p.packCooldown, PACK_COOLDOWN);
@@ -739,7 +794,11 @@ export function step(state: WorldState, dt: number): SimEvent[] {
   for (const p of state.participants) stepParticipant(state, p, dt, events);
   state.broadcast = Math.max(0, state.broadcast - dt);
   for (const c of state.carpets) c.lift = Math.max(0, c.lift - dt);
-  if (state.phase === 'play') state.buttonCooldown = Math.max(0, state.buttonCooldown - dt);
+  if (state.phase === 'play') {
+    state.buttonCooldown = Math.max(0, state.buttonCooldown - dt);
+    if (state.sabotage) state.sabotage.left -= dt;
+    else state.sabotageCooldown = Math.max(0, state.sabotageCooldown - dt);
+  }
   checkWin(state, events);
   state.tick++;
   return events;
