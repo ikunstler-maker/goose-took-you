@@ -1,0 +1,14 @@
+---
+paths:
+  - "src/sim/**"
+  - "src/config.ts"
+---
+# Simulation rules
+- Pure TypeScript: no imports from `three`, DOM, audio or render code.
+- Randomness only through the seeded RNG passed in; never `Math.random` or `Date.now`.
+- State changes only through commands → systems → events. Bots and the player issue the same commands.
+- Fixed timestep; no frame-rate-dependent logic.
+- State stays serialisable (plain objects, no class instances), ready for a future network transport.
+- Level generation: seed → slot grid → prefab placement → corridors. Every room must be reachable (unit test).
+- Any rule change (roles, win conditions, timers, chances) needs a unit test and a constant in `src/config.ts`.
+- Rule or balance change visible to the player → row in `docs/decisions.md` in the same PR.
