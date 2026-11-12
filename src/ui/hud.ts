@@ -80,6 +80,7 @@ export function createHud(handlers: { onNewOffice(): void; onLangChange(lang: La
     if (p?.kind === 'task') return t('hud.interact', { key: 'E', task: t(`task.${w.tasks[p.task]!.kind}`) });
     if (p?.kind === 'pickup') return t('hud.pickup', { key: 'E' });
     if (p?.kind === 'deliver') return t('hud.deliver', { key: 'E' });
+    if (p?.kind === 'button') return t('hud.button', { key: 'E' });
     if (self.carrying !== null) {
       const box = w.boxes.find((b) => b.id === self.carrying);
       return box ? t('hud.carrying', { hint: cargoHint(w.tasks[box.task]!) }) : '';
