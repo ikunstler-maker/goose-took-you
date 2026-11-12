@@ -1,6 +1,11 @@
 import * as THREE from 'three';
 import { BOX_SIZE } from '../config';
 import type { WorldState } from '../sim/world';
+
+/** Boxes outside the local player's sight are not drawn, like the chicks carrying them. */
+function isSeen(world: WorldState, x: number, z: number): boolean {
+  return world.visible[Math.floor(z) * world.level.size + Math.floor(x)] === 1;
+}
 import { cardboardBox } from './props';
 
 export interface BoxesView {
@@ -33,8 +38,10 @@ export function createBoxes(): BoxesView {
           model = make();
           meshes.set(box.id, model);
         }
-        if (box.carrier !== null) {
-          const { facing } = world.player;
+        const carrier = box.carrier === null ? null : world.participants[box.carrier];
+        model.visible = isSeen(world, box.x, box.z);
+        if (carrier) {
+          const { facing } = carrier;
           // Held in front of the chest; bounces with the step and knocks from side to side.
           const bounce = Math.abs(Math.sin(time * 9)) * 0.08;
           model.position.set(box.x + Math.sin(facing) * 0.5, 0.45 + bounce, box.z + Math.cos(facing) * 0.5);

@@ -1,7 +1,7 @@
 import { getLang, setLang, t, type I18nKey, type Lang } from '../i18n';
 import type { RoomType } from '../sim/prefabs';
 import { taskProgress, type Task } from '../sim/tasks';
-import { LOCAL_PLAYER, type WorldState } from '../sim/world';
+import { LOCAL_PLAYER, me, type WorldState } from '../sim/world';
 
 export interface Hud {
   setRoom(type: RoomType | null): void;
@@ -14,7 +14,7 @@ export interface Hud {
 
 const el = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
-export function createHud(handlers: { onNewOffice(): void; onLangChange(): void }): Hud {
+export function createHud(handlers: { onNewOffice(): void; onLangChange(lang: Lang): void }): Hud {
   const roomName = el('room-name');
   const newOffice = el<HTMLButtonElement>('new-office');
   const langButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('#lang button'));
@@ -60,13 +60,14 @@ export function createHud(handlers: { onNewOffice(): void; onLangChange(): void 
   };
 
   const promptText = (w: WorldState): string => {
-    if (w.activeTask !== null) return '';
-    const p = w.prompt;
+    const self = me(w);
+    if (w.phase !== 'play' || self.activeTask !== null) return '';
+    const p = self.prompt;
     if (p?.kind === 'task') return t('hud.interact', { key: 'E', task: t(`task.${w.tasks[p.task]!.kind}`) });
     if (p?.kind === 'pickup') return t('hud.pickup', { key: 'E' });
     if (p?.kind === 'deliver') return t('hud.deliver', { key: 'E' });
-    if (w.player.carrying !== null) {
-      const box = w.boxes.find((b) => b.id === w.player.carrying);
+    if (self.carrying !== null) {
+      const box = w.boxes.find((b) => b.id === self.carrying);
       return box ? t('hud.carrying', { hint: cargoHint(w.tasks[box.task]!) }) : '';
     }
     return '';
@@ -95,7 +96,7 @@ export function createHud(handlers: { onNewOffice(): void; onLangChange(): void 
       button.blur();
       setLang(button.dataset.lang as Lang);
       refresh();
-      handlers.onLangChange();
+      handlers.onLangChange(button.dataset.lang as Lang);
     });
   }
   refresh();

@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { INTERACT_RANGE, NEWS_BROADCAST_TIME, TASKS_PER_PLAYER, TICK } from '../config';
 import { rollSlip } from './cargo';
 import { STATION_PROPS, stationDistance, taskProgress, WINDOW_TASKS, type TaskKind } from './tasks';
-import { applyCommand, createWorld, step, type WorldState } from './world';
+import { applyCommand, createWorld as createLobby, LOCAL_PLAYER, me, step, type WorldState } from './world';
+
+/** A world past the lobby, ready to play. */
+function createWorld(seed: number) {
+  const state = createLobby(seed);
+  applyCommand(state, LOCAL_PLAYER, { type: 'start' });
+  return state;
+}
 
 const KINDS = Object.keys(STATION_PROPS) as TaskKind[];
 
@@ -10,8 +17,8 @@ const KINDS = Object.keys(STATION_PROPS) as TaskKind[];
 function standAt(state: WorldState, taskId: number): void {
   const task = state.tasks[taskId]!;
   const prop = state.level.props[state.stations[task.station]!.prop]!;
-  state.player.x = prop.x;
-  state.player.z = prop.z + prop.d / 2 + 0.5;
+  me(state).x = prop.x;
+  me(state).z = prop.z + prop.d / 2 + 0.5;
   step(state, TICK);
 }
 
@@ -38,41 +45,41 @@ describe('tasks', () => {
   it('opens a window task only within reach and fills the shared bar when finished', () => {
     const state = createWorld(42);
     const id = taskOf(state, 'modus');
-    expect(applyCommand(state, { type: 'interact' })).toEqual([]);
+    expect(applyCommand(state, LOCAL_PLAYER, { type: 'interact' })).toEqual([]);
     standAt(state, id);
     const station = state.stations[state.tasks[id]!.station]!;
-    expect(stationDistance(state.level, station, state.player.x, state.player.z)).toBeLessThanOrEqual(INTERACT_RANGE);
-    expect(state.prompt).toEqual({ kind: 'task', task: id });
-    expect(applyCommand(state, { type: 'interact' })[0]).toMatchObject({ type: 'taskOpened', taskId: id });
-    expect(state.activeTask).toBe(id);
+    expect(stationDistance(state.level, station, me(state).x, me(state).z)).toBeLessThanOrEqual(INTERACT_RANGE);
+    expect(me(state).prompt).toEqual({ kind: 'task', task: id });
+    expect(applyCommand(state, LOCAL_PLAYER, { type: 'interact' })[0]).toMatchObject({ type: 'taskOpened', taskId: id });
+    expect(me(state).activeTask).toBe(id);
 
-    applyCommand(state, { type: 'cancelTask' });
+    applyCommand(state, LOCAL_PLAYER, { type: 'cancelTask' });
     expect(state.tasks[id]!.done).toBe(false);
     expect(taskProgress(state.tasks)).toBe(0);
 
-    applyCommand(state, { type: 'interact' });
-    expect(applyCommand(state, { type: 'finishTask' })).toContainEqual({ type: 'taskDone', taskId: id });
+    applyCommand(state, LOCAL_PLAYER, { type: 'interact' });
+    expect(applyCommand(state, LOCAL_PLAYER, { type: 'finishTask' })).toContainEqual({ type: 'taskDone', who: 0, taskId: id });
     expect(taskProgress(state.tasks)).toBe(1 / TASKS_PER_PLAYER);
     step(state, TICK);
-    expect(state.prompt).not.toEqual({ kind: 'task', task: id });
+    expect(me(state).prompt).not.toEqual({ kind: 'task', task: id });
   });
 
   it('keeps the chick in place while a mini-game is open', () => {
     const state = createWorld(42);
     standAt(state, taskOf(state, 'copycat'));
-    applyCommand(state, { type: 'interact' });
-    const { x, z } = state.player;
-    applyCommand(state, { type: 'move', x: 1, z: 0 });
+    applyCommand(state, LOCAL_PLAYER, { type: 'interact' });
+    const { x, z } = me(state);
+    applyCommand(state, LOCAL_PLAYER, { type: 'move', x: 1, z: 0 });
     for (let i = 0; i < 30; i++) step(state, TICK);
-    expect(state.player.x).toBe(x);
-    expect(state.player.z).toBe(z);
+    expect(me(state).x).toBe(x);
+    expect(me(state).z).toBe(z);
   });
 
   it('starts the Lobby news broadcast when the news edit is done', () => {
     const state = createWorld(42);
     standAt(state, taskOf(state, 'news'));
-    expect(applyCommand(state, { type: 'interact' })[0]).toMatchObject({ type: 'taskOpened', kind: 'news' });
-    expect(applyCommand(state, { type: 'finishTask' })).toContainEqual({ type: 'broadcastStarted' });
+    expect(applyCommand(state, LOCAL_PLAYER, { type: 'interact' })[0]).toMatchObject({ type: 'taskOpened', kind: 'news' });
+    expect(applyCommand(state, LOCAL_PLAYER, { type: 'finishTask' })).toContainEqual({ type: 'broadcastStarted' });
     expect(state.broadcast).toBe(NEWS_BROADCAST_TIME);
     for (let t = 0; t < NEWS_BROADCAST_TIME + 0.1; t += TICK) step(state, TICK);
     expect(state.broadcast).toBe(0);
@@ -89,43 +96,43 @@ describe('cargo', () => {
     expect(WINDOW_TASKS).not.toContain('cargo');
 
     standAt(state, id);
-    expect(applyCommand(state, { type: 'interact' })).toEqual([{ type: 'boxPicked', boxId: id }]);
-    expect(state.player.carrying).toBe(id);
+    expect(applyCommand(state, LOCAL_PLAYER, { type: 'interact' })).toEqual([{ type: 'boxPicked', who: 0, boxId: id }]);
+    expect(me(state).carrying).toBe(id);
     expect(task.started).toBe(true);
-    expect(state.activeTask).toBeNull();
+    expect(me(state).activeTask).toBeNull();
 
     // Walking into the target room (teleport stands in for the route) offers to put the box down.
     const box = state.boxes[0]!;
     box.slipAt = -1;
     const room = state.level.rooms[task.target!]!;
-    state.player.x = room.cx;
-    state.player.z = room.cz;
+    me(state).x = room.cx;
+    me(state).z = room.cz;
     step(state, TICK);
-    expect(state.prompt).toEqual({ kind: 'deliver', task: id });
-    expect(applyCommand(state, { type: 'interact' })).toContainEqual({ type: 'taskDone', taskId: id });
+    expect(me(state).prompt).toEqual({ kind: 'deliver', task: id });
+    expect(applyCommand(state, LOCAL_PLAYER, { type: 'interact' })).toContainEqual({ type: 'taskDone', who: 0, taskId: id });
     expect(state.boxes).toHaveLength(0);
-    expect(state.player.carrying).toBeNull();
+    expect(me(state).carrying).toBeNull();
   });
 
   it('slips out of the wings at the rolled distance and can be picked up again', () => {
     const state = createWorld(42);
     const id = taskOf(state, 'cargo');
     standAt(state, id);
-    applyCommand(state, { type: 'interact' });
+    applyCommand(state, LOCAL_PLAYER, { type: 'interact' });
     const box = state.boxes[0]!;
     box.slipAt = 0.5;
     box.travelled = 0;
     let slipped = false;
-    applyCommand(state, { type: 'move', x: 0, z: 1 });
+    applyCommand(state, LOCAL_PLAYER, { type: 'move', x: 0, z: 1 });
     for (let i = 0; i < 60 && !slipped; i++) slipped = step(state, TICK).some((e) => e.type === 'boxSlipped');
     expect(slipped).toBe(true);
-    expect(state.player.carrying).toBeNull();
+    expect(me(state).carrying).toBeNull();
     expect(box.carrier).toBeNull();
-    applyCommand(state, { type: 'move', x: 0, z: 0 });
+    applyCommand(state, LOCAL_PLAYER, { type: 'move', x: 0, z: 0 });
     step(state, TICK);
-    expect(state.prompt).toEqual({ kind: 'pickup', box: box.id });
-    applyCommand(state, { type: 'interact' });
-    expect(state.player.carrying).toBe(box.id);
+    expect(me(state).prompt).toEqual({ kind: 'pickup', box: box.id });
+    applyCommand(state, LOCAL_PLAYER, { type: 'interact' });
+    expect(me(state).carrying).toBe(box.id);
   });
 
   it('slips on roughly BOX_SLIP_CHANCE of routes', () => {

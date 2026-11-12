@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { CUTAWAY_REACH, VISION_RADIUS, WALL_HEIGHT, WALL_LOW, WINDOW_HEIGHT } from '../config';
 import { FLOOR, GLASS, SOLID, type Level } from '../sim/level';
 import type { RoomType } from '../sim/prefabs';
-import type { WorldState } from '../sim/world';
+import { me, type WorldState } from '../sim/world';
 import { FLOOR_DENSITY, floorMaterial } from './floors';
 import { box, cylinder, disposeTree, fogUniforms, mat, sphere, withFog } from './kit';
 import { buildProp } from './props';
@@ -341,8 +341,8 @@ export function buildOffice(level: Level): OfficeView {
     }
     lowered = [];
     const reach = Math.ceil(VISION_RADIUS) + CUTAWAY_REACH + 1;
-    const px = Math.floor(world.player.x);
-    const pz = Math.floor(world.player.z);
+    const px = Math.floor(me(world).x);
+    const pz = Math.floor(me(world).z);
     for (let z = Math.max(1, pz - reach); z <= Math.min(n - 1, pz + reach); z++) {
       for (let x = Math.max(1, px - reach); x <= Math.min(n - 1, px + reach); x++) {
         const instance = instanceOf[z * n + x]!;
