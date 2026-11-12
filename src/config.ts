@@ -205,3 +205,20 @@ export const GOOSE_TRUST_RANGE = 3;
 export const THOUGHT_TIME = 1.6;
 /** Bot chicks walk over to report a vacation box they see this close, metres. */
 export const BOT_REPORT_SIGHT = 8;
+
+/** Meetings (stage 4). Discussion, then voting, then the result card, seconds. */
+export const MEETING_TALK = 30;
+export const MEETING_VOTE = 20;
+export const MEETING_RESULT = 5;
+/** Red «ТЕРМІНОВИЙ СОЗВОН» button: presses per participant per match. */
+export const BUTTON_USES = 1;
+/** The button cannot be pressed this long after the start and after each meeting, seconds. */
+export const BUTTON_COOLDOWN = 15;
+/** Seats around the meeting table: distance from the table centre, metres. */
+export const MEETING_SEAT_RADIUS = 2.4;
+/** A chick seeing a fresh vacation box remembers anyone this close to it, metres. */
+export const BOX_SUSPECT_RANGE = 3;
+/** Bot votes: chance to follow a strong accusation, to follow a vague hunch, to vote at random. */
+export const BOT_FOLLOW_CHANCE = 0.7;
+export const BOT_HUNCH_CHANCE = 0.6;
+export const BOT_RANDOM_VOTE = 0.15;

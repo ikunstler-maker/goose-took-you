@@ -39,6 +39,7 @@ import {
 import { cellCentre, findPath, fitsIn, nearestFree, type NavGrid } from './nav';
 import { createRng, type Rng } from './rng';
 import { stationDistance, WINDOW_TASKS } from './tasks';
+import { meetingTable, noteBox, type Suspicion } from './meeting';
 import { canSee } from './vision';
 import type { Command, Participant, SimEvent, Thought, WorldState } from './world';
 
@@ -52,6 +53,8 @@ export type Goal =
   | { kind: 'hunt'; target: number }
   /** Goose: stand at one of its own desks pretending to work. */
   | { kind: 'pose'; task: number }
+  /** Chick that saw a pack: press the red meeting button. */
+  | { kind: 'button' }
   /** Chick: walk over to a vacation box it saw. */
   | { kind: 'report'; box: number };
 
@@ -100,6 +103,8 @@ export interface Brain {
   spooked: boolean;
   /** This stalk ends with a heart instead of a pack. */
   bait: boolean;
+  /** Chick only: what it saw that points at someone; brought up at the next meeting. */
+  suspicion: Suspicion | null;
 }
 
 export function createBrain(rng: Rng): Brain {
@@ -129,6 +134,7 @@ export function createBrain(rng: Rng): Brain {
     abortAt: -1,
     spooked: false,
     bait: false,
+    suspicion: null,
   };
 }
 
@@ -231,7 +237,10 @@ function seenVacation(state: WorldState, bot: Participant): number | null {
   for (const box of state.boxes) {
     if (box.kind !== 'vacation' || box.reported) continue;
     if (Math.hypot(box.x - bot.x, box.z - bot.z) > BOT_REPORT_SIGHT) continue;
-    if (canSee(state.level, bot.x, bot.z, box.x, box.z)) return box.id;
+    if (canSee(state.level, bot.x, bot.z, box.x, box.z)) {
+      noteBox(state, bot, box.x, box.z);
+      return box.id;
+    }
   }
   return null;
 }
@@ -246,6 +255,8 @@ function chooseGoal(state: WorldState, bot: Participant, avoid: number | null): 
   }
   const seen = seenVacation(state, bot);
   if (seen !== null) return { kind: 'report', box: seen };
+  const sure = bot.brain?.suspicion?.level === 2 && state.participants[bot.brain.suspicion.who]!.alive;
+  if (sure && bot.buttonUses > 0 && state.buttonCooldown === 0 && bot.carrying === null) return { kind: 'button' };
   if (bot.carrying !== null) {
     const box = state.boxes.find((b) => b.id === bot.carrying)!;
     return { kind: 'deliver', task: box.task };
@@ -289,6 +300,12 @@ function destinations(state: WorldState, nav: NavGrid, bot: Participant, goal: G
       const brain = bot.brain!;
       return [nearestFree(nav, brain.preyX, brain.preyZ, 4)];
     }
+    case 'button': {
+      const table = meetingTable(state);
+      if (!table) return [];
+      const r = table.radius + 0.7;
+      return [0, 1, 2, 3, 4, 5, 6, 7].map((i) => nearestFree(nav, table.x + Math.sin(i * 0.785) * r, table.z + Math.cos(i * 0.785) * r, 2));
+    }
     case 'pose': {
       const cells = standCells(state, nav, state.tasks[goal.task]!.station);
       return cells.slice(0, STAND_TRIES);
@@ -311,6 +328,7 @@ function promptFits(bot: Participant, goal: Goal): boolean {
   if (goal.kind === 'task') return p.kind === 'task' && p.task === goal.task;
   if (goal.kind === 'deliver') return p.kind === 'deliver';
   if (goal.kind === 'pickup') return p.kind === 'pickup' && p.box === goal.box;
+  if (goal.kind === 'button') return p.kind === 'button';
   return false;
 }
 

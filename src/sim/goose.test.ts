@@ -81,7 +81,7 @@ describe('packing and reporting', () => {
     expect(applyCommand(state, LOCAL_PLAYER, { type: 'pack' })).toEqual([]);
   });
 
-  it('lets anyone nearby report a vacation box once; reported boxes give no prompt', () => {
+  it('lets anyone nearby report a vacation box once, which calls a meeting', () => {
     const state = started(42, 'chick');
     const goose = state.participants.find((p) => p.role === 'goose')!;
     const victim = state.participants.find((p) => p.role === 'chick' && p.id !== LOCAL_PLAYER)!;
@@ -100,9 +100,11 @@ describe('packing and reporting', () => {
     expect(me(state).prompt).toBeNull();
     expect(applyCommand(state, LOCAL_PLAYER, { type: 'report' })).toEqual([
       { type: 'reported', who: LOCAL_PLAYER, boxId: box.id, victim: victim.id },
+      { type: 'meetingStarted', who: LOCAL_PLAYER, victim: victim.id },
     ]);
     step(state, TICK);
     expect(me(state).canReport).toBeNull();
+    expect(applyCommand(state, LOCAL_PLAYER, { type: 'report' })).toEqual([]);
   });
 });
 
@@ -160,7 +162,7 @@ describe('winning', () => {
     for (const seed of [3, 42, 99]) {
       const state = started(seed, 'chick');
       const goose = state.participants.find((p) => p.role === 'goose')!;
-      for (let t = 0; t < 900 && state.phase === 'play'; t += TICK) {
+      for (let t = 0; t < 900 && state.phase !== 'over'; t += TICK) {
         const packed = step(state, TICK).filter((e) => e.type === 'packed').length;
         if (packed > 0) {
           // Never during the grace period; then a freeze and a model-worker spell.
