@@ -1,4 +1,5 @@
-import { TICK } from './config';
+import { ALARM_EVERY, HEARING_RANGE, KNOCK_EVERY, STEP_EVERY, TELL_VISIBLE_RANGE, TICK } from './config';
+import { createSound, type SoundName } from './audio/sound';
 import { createMinigameHost } from './minigames/host';
 import { createBoxes } from './render/boxes';
 import { createBroadcast, type BroadcastView } from './render/broadcast';
@@ -15,9 +16,26 @@ import { createLobby } from './ui/lobby';
 import { createMatchScreens } from './ui/match';
 import { createMeetingView } from './ui/meeting';
 import { loadSettings, saveSettings } from './ui/settings';
+import { createSoundControls } from './ui/soundControls';
 
 const settings = loadSettings();
 setLang(settings.lang);
+
+const sound = createSound(settings.volume, settings.muted);
+const soundControls = createSoundControls(settings, {
+  onChange: (volume, muted) => {
+    sound.setVolume(volume);
+    sound.setMuted(muted);
+    saveSettings({ volume, muted });
+    sound.play('click');
+  },
+});
+// Browsers keep audio silent until the first click or key press.
+window.addEventListener('pointerdown', () => sound.unlock(), { capture: true });
+window.addEventListener('keydown', () => sound.unlock(), { capture: true });
+document.addEventListener('click', (event) => {
+  if (event.target instanceof Element && event.target.closest('button')) sound.play('click');
+});
 
 const stage = createStage(document.getElementById('game') as HTMLCanvasElement);
 const chicks = createChicks();
@@ -80,6 +98,7 @@ const hud = createHud({
     lobby.relabel();
     screens.relabel(world);
     meeting.relabel();
+    soundControls.relabel();
   },
 });
 
@@ -98,10 +117,94 @@ const meeting = createMeetingView({ onVote: (target) => send({ type: 'vote', tar
 const minigames = createMinigameHost({
   onWin: () => send({ type: 'finishTask' }),
   onCancel: () => send({ type: 'cancelTask' }),
+  onSound: (name) => sound.play(name),
 });
+
+/** How loud something at (x, z) is for the player: silent when out of sight or too far. */
+function loudness(x: number, z: number): number {
+  const self = me(world);
+  const { size } = world.level;
+  const cx = Math.floor(x);
+  const cz = Math.floor(z);
+  if (cx < 0 || cz < 0 || cx >= size || cz >= size || world.visible[cz * size + cx] !== 1) return 0;
+  return Math.max(0, 1 - Math.hypot(x - self.x, z - self.z) / HEARING_RANGE);
+}
+
+/** Sounds of what participants do: the player's own at full volume, others' by sight and distance. */
+const ACTION_SOUNDS: Partial<Record<SimEvent['type'], SoundName>> = {
+  bumped: 'bonk',
+  boxPicked: 'pickup',
+  boxSlipped: 'slip',
+  packed: 'pack',
+  carpet: 'carpet',
+  sabotageFixed: 'fix',
+};
+/** Sounds everyone hears wherever they are. */
+const OFFICE_SOUNDS: Partial<Record<SimEvent['type'], SoundName>> = {
+  reported: 'report',
+  meetingStarted: 'meeting',
+  chat: 'chat',
+  voted: 'vote',
+  broadcastStarted: 'news',
+};
+
+function hear(event: SimEvent): void {
+  const office = OFFICE_SOUNDS[event.type];
+  if (office) sound.play(office);
+  const action = ACTION_SOUNDS[event.type];
+  if (action && 'who' in event) {
+    const actor = world.participants[event.who]!;
+    const packedMe = event.type === 'packed' && event.victim === LOCAL_PLAYER;
+    sound.play(action, event.who === LOCAL_PLAYER || packedMe ? 1 : loudness(actor.x, actor.z));
+  }
+  if (event.type === 'sabotageEnded' && event.fixed) sound.play('fixed');
+  if (event.type === 'taskOpened' && event.who === LOCAL_PLAYER) sound.play('open');
+  // A delivered box pays out like a won mini-game; window games ring when their own window closes.
+  if (event.type === 'taskDone' && event.who === LOCAL_PLAYER && world.tasks[event.taskId]!.kind === 'cargo') sound.play('jackpot');
+  if (event.type === 'gameOver') {
+    sound.play((event.winner === 'goose') === (me(world).role === 'goose') ? 'win' : 'lose');
+  }
+}
+
+let stepIn = 0;
+let knockIn = 0;
+let alarmIn = 0;
+const tellHeard = new Map<number, boolean>();
+
+/** Sounds that follow the state rather than one event: steps, the knocking box, the alarm, «га-га». */
+function ambience(dt: number): void {
+  const self = me(world);
+  const playing = world.phase === 'play';
+  stepIn -= dt;
+  if (playing && self.moving && stepIn <= 0) {
+    sound.play('step');
+    stepIn = STEP_EVERY;
+  }
+  knockIn -= dt;
+  if (playing && self.moving && self.carrying !== null && knockIn <= 0) {
+    sound.play('knock');
+    knockIn = KNOCK_EVERY;
+  }
+  alarmIn -= dt;
+  if (playing && world.sabotage && alarmIn <= 0) {
+    sound.play('alarm', 0.6);
+    alarmIn = ALARM_EVERY;
+  }
+  for (const p of world.participants) {
+    if (p.role !== 'goose') continue;
+    const stretching = playing && p.alive && p.tell > 0 && p.under === null;
+    if (stretching && !tellHeard.get(p.id)) {
+      // The Goose hears its own neck; chicks only from close by and in plain sight.
+      const near = Math.hypot(p.x - self.x, p.z - self.z) <= TELL_VISIBLE_RANGE;
+      sound.play('honk', p === self ? 0.5 : near ? loudness(p.x, p.z) : 0);
+    }
+    tellHeard.set(p.id, stretching);
+  }
+}
 
 function handle(events: SimEvent[]): void {
   for (const event of events) {
+    hear(event);
     // Anyone's finished task moves the shared bar.
     if (event.type === 'taskDone') {
       hud.setTasks(world);
@@ -312,6 +415,7 @@ function frame(now: number): void {
   hud.setAlarm(world);
   stage.setGloom(world.sabotage?.kind === 'overheat' && world.phase === 'play' ? 1 : 0, dt);
 
+  ambience(dt);
   const time = now / 1000;
   const player = me(world);
   chicks.update(world, time, dt);
@@ -331,4 +435,8 @@ requestAnimationFrame(frame);
   world: () => world,
   /** Lets automated checks act as any participant through the normal command path. */
   send: (who: number, command: Command) => handle(applyCommand(world, who, command)),
+  /** Fast-forwards the match through the normal step-and-handle path. */
+  advance: (seconds: number) => {
+    for (let t = 0; t < seconds && world.phase !== 'over'; t += TICK) handle(step(world, TICK));
+  },
 };

@@ -129,4 +129,11 @@ Entry format (≤8 lines):
 - Verify: `npm run test` — all files green with no test edits.
 - Seen: 2026-11-12
 
+### `console.log` from a passing Vitest file shows nothing
+- Symptom: a throwaway measurement test prints no rows although it passes.
+- Root cause: the default reporter hides console output of passing tests in this setup.
+- Fix: write results with `node:fs` `writeFileSync` to a scratch file and read that.
+- Verify: the file holds one row per seed.
+- Seen: 2026-11-12
+
 ## CI

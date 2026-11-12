@@ -1,4 +1,5 @@
 import { MINIGAME_DONE_PAUSE } from '../config';
+import type { SoundName } from '../audio/sound';
 import { t } from '../i18n';
 import type { TaskKind } from '../sim/tasks';
 import { createCopycatView } from './copycat/view';
@@ -24,7 +25,7 @@ export interface MinigameHost {
 }
 
 /** Overlay window around one mini-game. Reports the outcome; the sim decides what it means. */
-export function createMinigameHost(handlers: { onWin(): void; onCancel(): void }): MinigameHost {
+export function createMinigameHost(handlers: { onWin(): void; onCancel(): void; onSound(name: SoundName): void }): MinigameHost {
   const overlay = document.getElementById('minigame') as HTMLElement;
   let view: MinigameView | null = null;
   let kind: TaskKind | null = null;
@@ -84,7 +85,9 @@ export function createMinigameHost(handlers: { onWin(): void; onCancel(): void }
           if (doneIn >= 0) return;
           doneIn = MINIGAME_DONE_PAUSE;
           panel.classList.add('won');
+          handlers.onSound('jackpot');
         },
+        sound: handlers.onSound,
       });
       relabel();
     },

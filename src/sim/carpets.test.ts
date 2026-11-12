@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CARPET_COOLDOWN, TICK } from '../config';
+import { CARPET_COOLDOWN, CARPET_HIDE_LIMIT, CARPET_HIDE_MAX, TICK } from '../config';
 import { placeCarpets } from './carpets';
 import { meetingTable } from './meeting';
 import { findPath, fitsIn, nearestFree } from './nav';
@@ -121,11 +121,15 @@ describe('carpets', () => {
     let dives = 0;
     for (const seed of [3, 42, 99, 7]) {
       const state = started(seed, 'chick');
+      // Never left hiding forever; a sabotage may end the match while it still hides.
+      let hidden = 0;
+      let longest = 0;
       for (let t = 0; t < 600 && state.phase !== 'over'; t += TICK) {
         dives += step(state, TICK).filter((e) => e.type === 'carpet' && e.action === 'in').length;
+        hidden = state.phase === 'play' && state.participants.some((p) => p.under !== null) ? hidden + TICK : 0;
+        longest = Math.max(longest, hidden);
       }
-      // Never left hiding forever.
-      expect(state.participants.every((p) => p.under === null || state.phase !== 'over')).toBe(true);
+      expect(longest, `seed ${seed}`).toBeLessThan(CARPET_HIDE_LIMIT + CARPET_HIDE_MAX + 3);
     }
     expect(dives).toBeGreaterThan(0);
   }, 120_000);

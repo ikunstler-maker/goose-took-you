@@ -1219,3 +1219,18 @@ button:hover {
     background: #e2503a;
   }
 }
+
+#sound {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#mute {
+  min-width: 40px;
+}
+
+#volume {
+  width: 90px;
+  accent-color: var(--ink);
+}
