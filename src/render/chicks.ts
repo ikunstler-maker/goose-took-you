@@ -27,7 +27,9 @@ export function createChicks(): ChicksView {
       root.clear();
       root.add(halo);
       views = world.participants.map((p) => {
-        const view = createChick(CHICK_COLORS[p.color], ACCESSORIES[p.accessory]);
+        // Only the Goose's own player sees the Goose; to everyone else it is one more chick.
+        const unmasked = p.id === LOCAL_PLAYER && p.role === 'goose';
+        const view = createChick(CHICK_COLORS[p.color], ACCESSORIES[p.accessory], unmasked);
         root.add(view.root);
         return view;
       });

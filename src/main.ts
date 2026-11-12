@@ -135,6 +135,8 @@ function handle(events: SimEvent[]): void {
         chicks.rebuild(world);
         break;
       case 'started':
+        // Roles are dealt at the start: the player's own Goose swaps to its true model.
+        chicks.rebuild(world);
         lobby.hide();
         screens.showRole(world);
         markers?.refresh(world);
