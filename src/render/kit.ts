@@ -5,7 +5,48 @@ import * as THREE from 'three';
 
 const geometries = new Map<string, THREE.BufferGeometry>();
 const materials = new Map<string, THREE.Material>();
-const textures: THREE.Texture[] = [];
+
+// --- Fog of war -----------------------------------------------------------
+// Every material samples one shared texture (a texel per map cell) by world
+// position and fades to pale grey where the player has no line of sight.
+
+export const fogUniforms = {
+  uFogMap: { value: null as THREE.Texture | null },
+  uFogSize: { value: 1 },
+};
+
+/** Makes a material fade out of sight. Call once per material. */
+export function withFog<T extends THREE.Material>(material: T): T {
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uFogMap = fogUniforms.uFogMap;
+    shader.uniforms.uFogSize = fogUniforms.uFogSize;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vFogXZ;')
+      .replace(
+        '#include <project_vertex>',
+        `#include <project_vertex>
+        vec4 fogWorld = vec4(transformed, 1.0);
+        #ifdef USE_INSTANCING
+          fogWorld = instanceMatrix * fogWorld;
+        #endif
+        vFogXZ = (modelMatrix * fogWorld).xz;`,
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform sampler2D uFogMap;\nuniform float uFogSize;\nvarying vec2 vFogXZ;')
+      .replace(
+        '#include <dithering_fragment>',
+        `float seen = smoothstep(0.15, 0.85, texture2D(uFogMap, vFogXZ / uFogSize).r);
+        float grey = dot(gl_FragColor.rgb, vec3(0.299, 0.587, 0.114));
+        vec3 faded = mix(vec3(grey), vec3(0.72, 0.74, 0.78), 0.55) * 0.82;
+        gl_FragColor.rgb = mix(faded, gl_FragColor.rgb, seen);
+        #include <dithering_fragment>`,
+      );
+  };
+  material.customProgramCacheKey = () => 'fog';
+  return material;
+}
+
+// --- Materials and primitives ---------------------------------------------
 
 function geometry(key: string, make: () => THREE.BufferGeometry): THREE.BufferGeometry {
   let found = geometries.get(key);
@@ -16,17 +57,24 @@ function geometry(key: string, make: () => THREE.BufferGeometry): THREE.BufferGe
   return found;
 }
 
+/**
+ * Cached flat-colour material. `userData.merge` tells the office builder how
+ * static meshes with this material can be merged: 'lit' or 'glow'.
+ */
 export function mat(color: number, options: { emissive?: number; opacity?: number } = {}): THREE.Material {
   const key = `${color}:${options.emissive ?? ''}:${options.opacity ?? ''}`;
   let found = materials.get(key);
   if (!found) {
-    found = new THREE.MeshLambertMaterial({
-      color,
-      emissive: options.emissive ?? 0x000000,
-      transparent: options.opacity !== undefined,
-      opacity: options.opacity ?? 1,
-      depthWrite: options.opacity === undefined,
-    });
+    found = withFog(
+      new THREE.MeshLambertMaterial({
+        color,
+        emissive: options.emissive ?? 0x000000,
+        transparent: options.opacity !== undefined,
+        opacity: options.opacity ?? 1,
+        depthWrite: options.opacity === undefined,
+      }),
+    );
+    if (options.opacity === undefined) found.userData.merge = options.emissive === undefined ? 'lit' : 'glow';
     materials.set(key, found);
   }
   return found;
@@ -74,7 +122,7 @@ export function sphere(r: number, material: THREE.Material, x = 0, y = 0, z = 0,
 }
 
 export function smoothSphere(r: number, material: THREE.Material, x = 0, y = 0, z = 0): THREE.Mesh {
-  const geo = geometry(`ss:${r}`, () => new THREE.SphereGeometry(r, 20, 14));
+  const geo = geometry(`ss:${r}`, () => new THREE.SphereGeometry(r, 24, 16));
   return finish(new THREE.Mesh(geo, material), x, y, z, true);
 }
 
@@ -83,7 +131,7 @@ export function cone(r: number, h: number, material: THREE.Material, x = 0, y = 
   return finish(new THREE.Mesh(geo, material), x, y, z, true);
 }
 
-/** Canvas-backed texture; `draw` paints a square canvas of `size` pixels. */
+/** Canvas-backed texture; `draw` paints a canvas `size` wide and `height` tall. */
 export function canvasTexture(
   size: number,
   draw: (ctx: CanvasRenderingContext2D, size: number) => void,
@@ -97,7 +145,6 @@ export function canvasTexture(
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 4;
-  textures.push(texture);
   return texture;
 }
 
@@ -111,13 +158,15 @@ export function screen(
   const pxW = 512;
   const pxH = Math.max(64, Math.round((512 * h) / w));
   const texture = canvasTexture(pxW, (ctx) => draw(ctx, pxW, pxH), pxH);
-  const material = new THREE.MeshLambertMaterial({ map: texture, emissive: 0xffffff, emissiveMap: texture, emissiveIntensity: glow });
+  const material = withFog(
+    new THREE.MeshLambertMaterial({ map: texture, emissive: 0xffffff, emissiveMap: texture, emissiveIntensity: glow }),
+  );
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), material);
   mesh.userData.ownsResources = true;
   return mesh;
 }
 
-/** Frees per-office resources created by `screen` and floor textures. */
+/** Frees per-office resources: merged geometry, screens and their textures. */
 export function disposeTree(root: THREE.Object3D): void {
   root.traverse((node) => {
     const mesh = node as THREE.Mesh;
@@ -125,7 +174,7 @@ export function disposeTree(root: THREE.Object3D): void {
     mesh.geometry.dispose();
     // Materials without a map come from the shared cache and stay alive.
     const material = mesh.material as THREE.MeshLambertMaterial;
-    if (material.map) {
+    if (!mesh.userData.sharedMaterial && !Array.isArray(material) && material.map) {
       material.map.dispose();
       material.dispose();
     }

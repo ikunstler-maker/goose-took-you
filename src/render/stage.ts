@@ -17,6 +17,8 @@ export interface Stage {
   zoomBy(factor: number): void;
   /** Aims the sun and its shadow frustum at the building. */
   fitSun(size: number): void;
+  /** Redraws the sun's shadow map on the next frame; it is static otherwise. */
+  refreshShadows(): void;
   render(): void;
 }
 
@@ -27,6 +29,8 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  // The office is static, so shadows are only redrawn on request.
+  renderer.shadowMap.autoUpdate = false;
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0xbfe6ff);
@@ -97,6 +101,10 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
       shadowCamera.near = 1;
       shadowCamera.far = 160;
       shadowCamera.updateProjectionMatrix();
+      renderer.shadowMap.needsUpdate = true;
+    },
+    refreshShadows() {
+      renderer.shadowMap.needsUpdate = true;
     },
     render() {
       renderer.render(scene, camera);

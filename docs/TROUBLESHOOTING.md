@@ -15,6 +15,13 @@ Entry format (≤8 lines):
 
 ## Env
 
+### Never restore a file with `git checkout` while it has uncommitted work
+- Symptom: temporary debug edits need undoing in a file that also holds uncommitted changes.
+- Root cause: `git checkout <file>` drops all uncommitted work in it, not only the debug lines.
+- Fix: copy the file to the scratchpad first and copy it back; or commit before instrumenting.
+- Verify: `git status --short` still lists the file as modified.
+- Seen: 2026-11-12
+
 ### PR cannot be opened in an empty repository
 - Symptom: repository has no branches; `git ls-remote origin` prints nothing; no base branch for a PR.
 - Root cause: GitHub needs an existing base branch that shares history with the head branch.
@@ -33,6 +40,13 @@ Entry format (≤8 lines):
 
 ## Render
 
+### Light dashed lines along wall tops
+- Symptom: thin light slivers on every seam between wall cells, flickering when the camera moves.
+- Root cause: side faces of neighbouring instanced boxes tie in depth with the top faces at the seam.
+- Fix: wall-top material uses `polygonOffset` (-2, -2) (`CAP` in `src/render/office.ts`).
+- Verify: screenshot of a corridor shows clean dark wall tops.
+- Seen: 2026-11-12
+
 ### Object.assign on an Object3D breaks the page
 - Symptom: `TypeError: Cannot assign to read only property 'position' of object`; blank canvas, `window.__goose` undefined.
 - Root cause: `position`, `rotation`, `scale` of a Three.js `Object3D` are read-only properties; they cannot be replaced.
@@ -48,5 +62,19 @@ Entry format (≤8 lines):
 - Seen: 2026-11-12
 
 ## Sim
+
+### Level generation takes a minute on rare seeds
+- Symptom: `generateLevel` runs ~60 s for one seed in hundreds (seed 55 before the fix); tests time out.
+- Root cause: A* heap stored cells and read priorities from a shared array; lowering a priority in place corrupted the heap order.
+- Fix: heap of (priority, cell) pairs with a closed set, stale entries skipped (`route` in `src/sim/level.ts`).
+- Verify: generating seeds 1–400 takes under 100 ms each.
+- Seen: 2026-11-12
+
+### Rooms unreachable although the map looks connected
+- Symptom: reachability test below 0.97; ASCII map shows doors and corridors everywhere.
+- Root cause: one-metre pinches — a corridor offset from its door by a cell, a corridor squeezed against a room corner, or two props narrowing a junction.
+- Fix: widen door mouths (`stamp` 3), require 2×2 clearance in `route`, reserve walkway cells in `placeAgainstWall`, final `pruneBlockers` pass.
+- Verify: `npx vitest run src/sim`; debug by printing `blocked()` on a 0.5 m grid around the break.
+- Seen: 2026-11-12
 
 ## CI
