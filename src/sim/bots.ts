@@ -9,6 +9,10 @@ import {
   BOT_STUCK_DISTANCE,
   BOT_TASK_MAX,
   BOT_TASK_MIN,
+  CARPET_ESCAPE_RANGE,
+  CARPET_HIDE_LIMIT,
+  CARPET_HIDE_MAX,
+  CARPET_HIDE_MIN,
   GOOSE_ABORT_CHANCE,
   GOOSE_ALIBI_MAX,
   GOOSE_ALIBI_MIN,
@@ -55,6 +59,8 @@ export type Goal =
   | { kind: 'pose'; task: number }
   /** Chick that saw a pack: press the red meeting button. */
   | { kind: 'button' }
+  /** Goose: get to this rug to escape under it. */
+  | { kind: 'carpet'; carpet: number }
   /** Chick: walk over to a vacation box it saw. */
   | { kind: 'report'; box: number };
 
@@ -103,6 +109,12 @@ export interface Brain {
   spooked: boolean;
   /** This stalk ends with a heart instead of a pack. */
   bait: boolean;
+  /** Goose: rug to escape under after a pack, or null. */
+  escape: number | null;
+  /** Goose under a rug: seconds until it crawls on or climbs out, total time hidden, crawled yet. */
+  hideLeft: number;
+  hidden: number;
+  crawled: boolean;
   /** Chick only: what it saw that points at someone; brought up at the next meeting. */
   suspicion: Suspicion | null;
 }
@@ -135,6 +147,10 @@ export function createBrain(rng: Rng): Brain {
     spooked: false,
     bait: false,
     suspicion: null,
+    escape: null,
+    hideLeft: 0,
+    hidden: 0,
+    crawled: false,
   };
 }
 
@@ -249,6 +265,7 @@ function chooseGoal(state: WorldState, bot: Participant, avoid: number | null): 
   if (bot.role === 'goose') {
     // The Goose's task list is a cover: it only poses at its desks, strolls and stalks.
     const brain = bot.brain!;
+    if (brain.escape !== null) return { kind: 'carpet', carpet: brain.escape };
     if (brain.prey !== null) return { kind: 'hunt', target: brain.prey };
     if ((brain.alibi > 0 || brain.calm > 0) && brain.poseTask !== null) return { kind: 'pose', task: brain.poseTask };
     return { kind: 'wander' };
@@ -306,6 +323,10 @@ function destinations(state: WorldState, nav: NavGrid, bot: Participant, goal: G
       const r = table.radius + 0.7;
       return [0, 1, 2, 3, 4, 5, 6, 7].map((i) => nearestFree(nav, table.x + Math.sin(i * 0.785) * r, table.z + Math.cos(i * 0.785) * r, 2));
     }
+    case 'carpet': {
+      const c = state.carpets[goal.carpet]!;
+      return [nearestFree(nav, c.x, c.z, 2)];
+    }
     case 'pose': {
       const cells = standCells(state, nav, state.tasks[goal.task]!.station);
       return cells.slice(0, STAND_TRIES);
@@ -329,6 +350,7 @@ function promptFits(bot: Participant, goal: Goal): boolean {
   if (goal.kind === 'deliver') return p.kind === 'deliver';
   if (goal.kind === 'pickup') return p.kind === 'pickup' && p.box === goal.box;
   if (goal.kind === 'button') return p.kind === 'button';
+  if (goal.kind === 'carpet') return p.kind === 'carpet' && p.carpet === goal.carpet;
   return false;
 }
 
@@ -339,6 +361,20 @@ function pickPose(state: WorldState, goose: Participant, rng: Rng): number | nul
 }
 
 /** The hunt is over (packed or dropped): play a model worker for a while. */
+/** The nearest rug within escape range, or null. */
+function escapeCarpet(state: WorldState, goose: Participant): number | null {
+  let best: number | null = null;
+  let bestD = CARPET_ESCAPE_RANGE;
+  for (const c of state.carpets) {
+    const d = Math.hypot(c.x - goose.x, c.z - goose.z);
+    if (d < bestD) {
+      best = c.id;
+      bestD = d;
+    }
+  }
+  return best;
+}
+
 function endHunt(brain: Brain, rng: Rng, packed: boolean): void {
   brain.prey = null;
   brain.stalk = 0;
@@ -354,8 +390,33 @@ function endHunt(brain: Brain, rng: Rng, packed: boolean): void {
  * Bot Goose bookkeeping before the shared bot logic: timers, what it sees and remembers,
  * standing at a desk, spotting new prey. True when this tick is fully handled.
  */
-function gooseMind(state: WorldState, bot: Participant, dt: number, rng: Rng, halt: () => void): boolean {
+function gooseMind(
+  state: WorldState,
+  bot: Participant,
+  dt: number,
+  rng: Rng,
+  halt: () => void,
+  send: Send,
+  events: SimEvent[],
+): boolean {
   const brain = bot.brain!;
+  if (bot.under !== null) {
+    // Hiding: crawl on once, then climb out when nobody would see it (or it gets bored).
+    brain.hideLeft -= dt;
+    brain.hidden += dt;
+    if (brain.hideLeft > 0 || bot.carpetCooldown > 0) return true;
+    const here = state.carpets[bot.under]!;
+    if (!brain.crawled && here.links.length > 0) {
+      brain.crawled = true;
+      brain.hideLeft = between(rng, CARPET_HIDE_MIN, CARPET_HIDE_MAX);
+      events.push(...send(bot.id, { type: 'crawl', to: here.links[rng.int(here.links.length)]! }));
+    } else if (unwatched(state, bot, bot) || brain.hidden > CARPET_HIDE_LIMIT) {
+      events.push(...send(bot.id, { type: 'interact' }));
+    } else {
+      brain.hideLeft = 0.5;
+    }
+    return true;
+  }
   brain.age += dt;
   brain.calm = Math.max(0, brain.calm - dt);
   brain.alibi = Math.max(0, brain.alibi - dt);
@@ -416,7 +477,7 @@ export function thinkBot(state: WorldState, nav: NavGrid, bot: Participant, dt: 
     if (bot.moveX !== 0 || bot.moveZ !== 0) events.push(...send(bot.id, { type: 'move', x: 0, z: 0 }));
   };
 
-  if (bot.role === 'goose' && gooseMind(state, bot, dt, rng, halt)) return events;
+  if (bot.role === 'goose' && gooseMind(state, bot, dt, rng, halt, send, events)) return events;
 
   if (bot.activeTask !== null) {
     brain.work -= dt;
@@ -490,8 +551,9 @@ export function thinkBot(state: WorldState, nav: NavGrid, bot: Participant, dt: 
       halt();
       events.push(...send(bot.id, { type: 'pack' }));
       endHunt(brain, rng, true);
-      // A moment of mock panic over the fresh box.
+      // A moment of mock panic over the fresh box, then off to the nearest rug if there is one.
       brain.wait = GOOSE_PACK_FREEZE;
+      brain.escape = escapeCarpet(state, bot);
       return events;
     }
     // The prey moves: re-plan towards where the Goose last saw it.
@@ -500,6 +562,20 @@ export function thinkBot(state: WorldState, nav: NavGrid, bot: Participant, dt: 
     brain.arrived = false;
   }
 
+  if (goal.kind === 'carpet' && promptFits(bot, goal)) {
+    halt();
+    brain.escape = null;
+    brain.goal = null;
+    brain.path = [];
+    // Dive only when nobody is looking; otherwise just walk on as if nothing happened.
+    if (unwatched(state, bot, bot)) {
+      events.push(...send(bot.id, { type: 'interact' }));
+      brain.hideLeft = between(rng, CARPET_HIDE_MIN, CARPET_HIDE_MAX);
+      brain.hidden = 0;
+      brain.crawled = false;
+    }
+    return events;
+  }
   if (promptFits(bot, goal)) {
     halt();
     events.push(...send(bot.id, { type: 'interact' }));
@@ -526,6 +602,7 @@ export function thinkBot(state: WorldState, nav: NavGrid, bot: Participant, dt: 
         return events;
       }
       if (goal.kind === 'wander' || goal.kind === 'hunt' || brain.atGoal > BOT_GIVE_UP) {
+        if (goal.kind === 'carpet') brain.escape = null;
         if (goal.kind === 'task') {
           brain.avoid = goal.task;
           brain.avoidLeft = BOT_AVOID_TIME;
@@ -544,6 +621,7 @@ export function thinkBot(state: WorldState, nav: NavGrid, bot: Participant, dt: 
     }
     if (!path) {
       if (goal.kind === 'pose') brain.poseTask = null;
+      if (goal.kind === 'carpet') brain.escape = null;
       if (goal.kind === 'task') {
         brain.avoid = goal.task;
         brain.avoidLeft = BOT_AVOID_TIME;

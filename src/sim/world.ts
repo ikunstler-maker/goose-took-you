@@ -1,5 +1,8 @@
 import {
   ACCESSORIES,
+  CARPET_COOLDOWN,
+  CARPET_DIVE,
+  CARPET_VISION,
   BORED_AFTER,
   BUTTON_COOLDOWN,
   BUTTON_USES,
@@ -39,7 +42,8 @@ import {
   type Task,
   type TaskKind,
 } from './tasks';
-import { castVote, meetingTable, notePack, startMeeting, stepMeeting, type Meeting } from './meeting';
+import { castVote, meetingTable, noteDeed, startMeeting, stepMeeting, type Meeting } from './meeting';
+import { carpetInReach, placeCarpets, type Carpet } from './carpets';
 import { computeVisibility } from './vision';
 
 /** What the chick's face shows; driven by what just happened to it. */
@@ -54,7 +58,9 @@ export type Prompt =
   | { kind: 'pickup'; box: number }
   | { kind: 'deliver'; task: number }
   /** The red «ТЕРМІНОВИЙ СОЗВОН» button on the meeting table. */
-  | { kind: 'button' };
+  | { kind: 'button' }
+  /** Goose: dive under this rug. */
+  | { kind: 'carpet'; carpet: number };
 
 /** A chick, or the Goose disguised as one. */
 export type Role = 'chick' | 'goose';
@@ -70,6 +76,10 @@ export interface Participant {
   ejected: boolean;
   /** Red button presses left this match. */
   buttonUses: number;
+  /** Goose only: the rug it hides under, or null. Hidden participants are not seen by anyone. */
+  under: number | null;
+  /** Seconds before the next carpet action. */
+  carpetCooldown: number;
   /** Goose only: seconds until the next pack is allowed. */
   packCooldown: number;
   /** Goose only: seconds left of the neck stretch, and until the next one. */
@@ -131,6 +141,8 @@ export interface WorldState {
   stations: Station[];
   tasks: Task[];
   boxes: Box[];
+  /** Rugs the Goose can hide under and crawl between. */
+  carpets: Carpet[];
   /** Seconds left of «Екстрені Новини» on the Lobby screen; 0 when off. */
   broadcast: number;
   winner: Winner | null;
@@ -158,7 +170,9 @@ export type Command =
   /** Show a short thought bubble for THOUGHT_TIME seconds. */
   | { type: 'think'; thought: Thought }
   /** At a meeting: vote for a participant id, or SKIP_VOTE. */
-  | { type: 'vote'; target: number };
+  | { type: 'vote'; target: number }
+  /** Goose under a rug: crawl to a linked rug. */
+  | { type: 'crawl'; to: number };
 
 export type SimEvent =
   | { type: 'roomChanged'; who: number; roomId: number | null }
@@ -176,6 +190,7 @@ export type SimEvent =
   | { type: 'started' }
   | { type: 'packed'; who: number; victim: number; boxId: number }
   | { type: 'reported'; who: number; boxId: number; victim: number }
+  | { type: 'carpet'; who: number; carpet: number; action: 'in' | 'out' | 'crawl' }
   | { type: 'meetingStarted'; who: number; victim: number | null }
   /** The meeting moved to voting or to the result card. */
   | { type: 'meetingStage' }
@@ -251,6 +266,8 @@ export function createWorld(
     alive: true,
     ejected: false,
     buttonUses: BUTTON_USES,
+    under: null,
+    carpetCooldown: 0,
     packCooldown: 0,
     tell: 0,
     tellIn: 0,
@@ -294,6 +311,7 @@ export function createWorld(
     stations,
     tasks,
     boxes: [],
+    carpets: placeCarpets(level, buckets),
     broadcast: 0,
     winner: null,
     meeting: null,
@@ -342,6 +360,8 @@ export function applyCommand(state: WorldState, who: number, command: Command): 
       return state.phase === 'play' ? pack(state, actor) : [];
     case 'report':
       return state.phase === 'play' ? report(state, actor) : [];
+    case 'crawl':
+      return state.phase === 'play' ? crawl(state, actor, command.to) : [];
     case 'vote':
       return state.phase === 'meeting' ? castVote(state, actor, command.target) : [];
     case 'think':
@@ -379,7 +399,7 @@ function pack(state: WorldState, actor: Participant): SimEvent[] {
   if (actor.role !== 'goose' || !actor.alive || actor.packCooldown > 0 || actor.canPack === null) return [];
   const victim = state.participants[actor.canPack]!;
   if (!victim.alive || victim.role === 'goose') return [];
-  notePack(state, actor, victim);
+  noteDeed(state, actor, victim, 'pack');
   victim.alive = false;
   victim.moving = false;
   victim.moveX = 0;
@@ -470,9 +490,44 @@ function completeTask(state: WorldState, actor: Participant, task: Task): SimEve
   return events;
 }
 
+/** The local player's sight: shorter while hiding under a rug. */
+function refreshVision(state: WorldState): void {
+  const self = me(state);
+  computeVisibility(state.level, self.x, self.z, state.visible, self.under !== null ? CARPET_VISION : undefined);
+  state.visibleVersion++;
+}
+
+/** Dive under a rug or climb out of it; anyone who sees it will remember. */
+function carpetAction(state: WorldState, actor: Participant, carpet: Carpet, action: 'in' | 'out' | 'crawl'): SimEvent[] {
+  if (action !== 'crawl') noteDeed(state, actor, null, 'carpet');
+  actor.under = action === 'out' ? null : carpet.id;
+  actor.x = carpet.x;
+  actor.z = carpet.z;
+  actor.moveX = 0;
+  actor.moveZ = 0;
+  actor.moving = false;
+  actor.carpetCooldown = CARPET_COOLDOWN;
+  if (action !== 'crawl') carpet.lift = CARPET_DIVE;
+  if (actor.id === LOCAL_PLAYER) refreshVision(state);
+  return [{ type: 'carpet', who: actor.id, carpet: carpet.id, action }];
+}
+
+function crawl(state: WorldState, actor: Participant, to: number): SimEvent[] {
+  if (actor.under === null || actor.carpetCooldown > 0) return [];
+  const from = state.carpets[actor.under]!;
+  if (!from.links.includes(to)) return [];
+  return carpetAction(state, actor, state.carpets[to]!, 'crawl');
+}
+
 function interact(state: WorldState, actor: Participant): SimEvent[] {
+  if (actor.under !== null) {
+    return actor.carpetCooldown > 0 ? [] : carpetAction(state, actor, state.carpets[actor.under]!, 'out');
+  }
   const prompt = actor.prompt;
   if (actor.activeTask !== null || prompt === null) return [];
+  if (prompt.kind === 'carpet') {
+    return actor.carpetCooldown > 0 ? [] : carpetAction(state, actor, state.carpets[prompt.carpet]!, 'in');
+  }
   if (prompt.kind === 'button') {
     actor.buttonUses--;
     return startMeeting(state, actor, null);
@@ -517,6 +572,7 @@ function interact(state: WorldState, actor: Participant): SimEvent[] {
 }
 
 function computePrompt(state: WorldState, actor: Participant): Prompt | null {
+  if (actor.under !== null) return null;
   if (actor.carrying !== null) {
     const box = state.boxes.find((b) => b.id === actor.carrying)!;
     const task = state.tasks[box.task]!;
@@ -526,6 +582,10 @@ function computePrompt(state: WorldState, actor: Participant): Prompt | null {
   if (box) return { kind: 'pickup', box: box.id };
   const task = taskInReach(state.level, state.stations, state.tasks, actor.id, actor.x, actor.z);
   if (task) return { kind: 'task', task: task.id };
+  if (actor.role === 'goose') {
+    const carpet = carpetInReach(state.carpets, actor.x, actor.z);
+    if (carpet) return { kind: 'carpet', carpet: carpet.id };
+  }
   return canPressButton(state, actor) ? { kind: 'button' } : null;
 }
 
@@ -556,7 +616,8 @@ function packTarget(state: WorldState, goose: Participant): number | null {
 /** Moves one participant and updates its face, box and prompt. */
 function stepParticipant(state: WorldState, p: Participant, dt: number, events: SimEvent[]): void {
   const { level, buckets } = state;
-  p.moving = state.phase === 'play' && p.alive && p.activeTask === null && (p.moveX !== 0 || p.moveZ !== 0);
+  p.moving = state.phase === 'play' && p.alive && p.activeTask === null && p.under === null && (p.moveX !== 0 || p.moveZ !== 0);
+  p.carpetCooldown = Math.max(0, p.carpetCooldown - dt);
   p.bumpCooldown = Math.max(0, p.bumpCooldown - dt);
   p.emotionTime = Math.max(0, p.emotionTime - dt);
   p.thoughtTime = Math.max(0, p.thoughtTime - dt);
@@ -619,9 +680,10 @@ function stepParticipant(state: WorldState, p: Participant, dt: number, events: 
   }
 
   const playing = state.phase === 'play' && p.alive;
+  const exposed = playing && p.under === null;
   const prompt = playing ? computePrompt(state, p) : null;
-  const canReport = playing ? (vacationInReach(state.boxes, p.x, p.z, REPORT_RANGE)?.id ?? null) : null;
-  const canPack = playing && p.role === 'goose' ? packTarget(state, p) : null;
+  const canReport = exposed ? (vacationInReach(state.boxes, p.x, p.z, REPORT_RANGE)?.id ?? null) : null;
+  const canPack = exposed && p.role === 'goose' ? packTarget(state, p) : null;
   if (!samePrompt(prompt, p.prompt) || canReport !== p.canReport || canPack !== p.canPack) {
     p.prompt = prompt;
     p.canReport = canReport;
@@ -640,7 +702,7 @@ function stepParticipant(state: WorldState, p: Participant, dt: number, events: 
       }
     }
     p.tellBubble =
-      p.tell > 0 && state.participants.some((o) => o !== p && o.alive && Math.hypot(o.x - p.x, o.z - p.z) <= TELL_BUBBLE_RANGE);
+      p.tell > 0 && p.under === null && state.participants.some((o) => o !== p && o.alive && Math.hypot(o.x - p.x, o.z - p.z) <= TELL_BUBBLE_RANGE);
   }
 
   if (p.emotionTime === 0) {
@@ -662,6 +724,7 @@ function endMeeting(state: WorldState, events: SimEvent[]): void {
       p.brain.alibi = 0;
     }
   }
+  refreshVision(state);
   events.push({ type: 'meetingEnded', ejected });
 }
 
@@ -675,6 +738,7 @@ export function step(state: WorldState, dt: number): SimEvent[] {
   for (const p of state.participants) if (p.brain) events.push(...thinkBot(state, state.nav, p, dt, send));
   for (const p of state.participants) stepParticipant(state, p, dt, events);
   state.broadcast = Math.max(0, state.broadcast - dt);
+  for (const c of state.carpets) c.lift = Math.max(0, c.lift - dt);
   if (state.phase === 'play') state.buttonCooldown = Math.max(0, state.buttonCooldown - dt);
   checkWin(state, events);
   state.tick++;
