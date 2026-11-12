@@ -1,3 +1,4 @@
+import type { SoundName } from '../audio/sound';
 import type { TaskKind } from '../sim/tasks';
 
 /** What a mini-game view gets from the host. */
@@ -7,6 +8,7 @@ export interface MinigameContext {
   body: HTMLElement;
   /** Called once when the round is won. */
   win(): void;
+  sound(name: SoundName): void;
 }
 
 /** A mini-game screen: logic lives in `logic.ts`, the view only draws and forwards input. */

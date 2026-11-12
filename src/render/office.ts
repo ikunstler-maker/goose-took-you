@@ -7,6 +7,7 @@ import { me, type WorldState } from '../sim/world';
 import { FLOOR_DENSITY, floorMaterial } from './floors';
 import { box, cylinder, disposeTree, fogUniforms, mat, sphere, withFog } from './kit';
 import { buildProp } from './props';
+import { buildRays } from './rays';
 
 const WALL = mat(0xffffff);
 // Wall tops win depth ties against the side faces of neighbouring cells,
@@ -293,6 +294,8 @@ export function buildOffice(level: Level): OfficeView {
   buildGlass(level, statics);
   buildPark(n, statics, root);
   mergeStatics(statics, root, n);
+  const rays = buildRays(level);
+  root.add(rays);
 
   const animated: THREE.Object3D[] = [];
   root.traverse((node) => {
@@ -366,6 +369,8 @@ export function buildOffice(level: Level): OfficeView {
   return {
     root,
     update(world, time, dt) {
+      // No sun shafts while the lights are out.
+      rays.visible = world.sabotage?.kind !== 'overheat';
       if (world.visibleVersion !== seenVersion) {
         seenVersion = world.visibleVersion;
         refreshVisibility(world);

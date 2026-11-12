@@ -85,7 +85,10 @@ export function createModusView(ctx: MinigameContext): MinigameView {
     return el;
   };
 
+  let closedHeard = 0;
   function draw(): void {
+    if (state.closed > closedHeard) ctx.sound('stickerClose');
+    closedHeard = state.closed;
     goal.textContent = t('minigame.modus.goal', { count: MODUS_TARGET });
     count.textContent = t('minigame.modus.closed', { closed: state.closed, count: MODUS_TARGET });
     chaosLabel.textContent = `${t('minigame.modus.chaos')} ${Math.round(state.chaos)}%`;
@@ -107,6 +110,7 @@ export function createModusView(ctx: MinigameContext): MinigameView {
       let el = elements.get(sticker.id);
       if (!el) {
         el = makeSticker(sticker.id, sticker.tilt);
+        ctx.sound('sticker');
         elements.set(sticker.id, el);
         el.style.left = `calc(${sticker.x * 100}% - 80px)`;
         el.style.top = `calc(${sticker.y * 100}% - 34px)`;

@@ -128,8 +128,8 @@ export const SPAWN_SPACING = 1.5;
 /** Bots. Grid resolution for path finding, metres. */
 export const NAV_STEP = 0.5;
 /** Seconds a bot spends "doing" a window task, picked between the two. */
-export const BOT_TASK_MIN = 6;
-export const BOT_TASK_MAX = 12;
+export const BOT_TASK_MIN = 24;
+export const BOT_TASK_MAX = 44;
 /** Pause after arriving somewhere while wandering, seconds. */
 export const BOT_IDLE_MIN = 1.5;
 export const BOT_IDLE_MAX = 5;
@@ -169,7 +169,7 @@ export const GOOSE_WORK_SIGHT_ANGLE = 45;
 /** Bot Goose remembers where it last saw its prey this long, seconds. */
 export const GOOSE_MEMORY = 8;
 /** Bot Goose does not hunt for this long after the match starts (and, from stage 4, after a meeting), seconds. */
-export const GOOSE_GRACE = 25;
+export const GOOSE_GRACE = 12;
 /** Bot Goose follows its prey this long before closing in, keeping this gap, seconds and metres. */
 export const GOOSE_STALK_MIN = 2;
 export const GOOSE_STALK_MAX = 4;
@@ -186,8 +186,8 @@ export const GOOSE_WHIM_CHANCE = 0.1;
 export const GOOSE_SPOTTED_ANGLE = 50;
 export const GOOSE_SPOTTED_RANGE = 5;
 /** After a pack the bot Goose plays a model worker for this long, seconds. */
-export const GOOSE_ALIBI_MIN = 20;
-export const GOOSE_ALIBI_MAX = 35;
+export const GOOSE_ALIBI_MIN = 8;
+export const GOOSE_ALIBI_MAX = 15;
 /** After a dropped hunt, a shorter spell of it, seconds. */
 export const GOOSE_DROP_ALIBI_MIN = 3;
 export const GOOSE_DROP_ALIBI_MAX = 6;
@@ -255,10 +255,10 @@ export const SABOTAGE_COOLDOWN = 40;
 /** The Goose's neck stretches this many times more often while a sabotage runs. */
 export const TELL_SABOTAGE_RATE = 3;
 /** Share of bot chicks that drop everything and go to fix a sabotage. */
-export const BOT_FIX_CHANCE = 0.75;
+export const BOT_FIX_CHANCE = 0.32;
 /** Bot Goose: waits this long after the cooldown before it starts a sabotage, seconds. */
-export const GOOSE_SABOTAGE_MIN = 8;
-export const GOOSE_SABOTAGE_MAX = 35;
+export const GOOSE_SABOTAGE_MIN = 5;
+export const GOOSE_SABOTAGE_MAX = 20;
 /** Daylight, and the lights during «Перегрів»: intensities, backdrop colour, seconds to fade. */
 export const SKY_LIGHT = 1.9;
 export const SUN_LIGHT = 2.4;
@@ -266,3 +266,18 @@ export const GLOOM_SKY_LIGHT = 0.5;
 export const GLOOM_SUN_LIGHT = 0.25;
 export const GLOOM_SKY = 0x1a2238;
 export const GLOOM_FADE = 0.8;
+
+// --- Sound (stage 5) ---
+/** Master volume on the first visit, 0..1. */
+export const SOUND_DEFAULT_VOLUME = 0.7;
+/** Seconds between the player's footsteps, between knocks of a carried box, and between alarm wails. */
+export const STEP_EVERY = 0.27;
+export const KNOCK_EVERY = 0.52;
+export const ALARM_EVERY = 1.6;
+/** Other participants' sounds fade to nothing at this distance, metres. */
+export const HEARING_RANGE = 9;
+
+// --- Sun rays (stage 5) ---
+/** Slanted light sheets per window pane, and how opaque each is at the glass. */
+export const SUN_RAY_LAYERS = 3;
+export const SUN_RAY_OPACITY = 0.3;
