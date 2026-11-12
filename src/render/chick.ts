@@ -1,11 +1,59 @@
 import * as THREE from 'three';
 import type { Accessory } from '../config';
 import type { Emotion } from '../sim/world';
-import { box, cone, cylinder, mat, smoothSphere, sphere } from './kit';
+import { t } from '../i18n';
+import { box, canvasTexture, cone, cylinder, mat, smoothSphere, sphere, withFog } from './kit';
 
 export interface ChickView {
   root: THREE.Group;
-  update(x: number, z: number, facing: number, moving: boolean, emotion: Emotion, time: number, dt: number): void;
+  /** `neck` 0..1 stretches the Goose's neck; `bubble` shows «га-га?» above the head. */
+  update(
+    x: number,
+    z: number,
+    facing: number,
+    moving: boolean,
+    emotion: Emotion,
+    time: number,
+    dt: number,
+    neck?: number,
+    bubble?: boolean,
+  ): void;
+}
+
+const BUBBLE = new THREE.PlaneGeometry(1.5, 0.7);
+const bubbles = new Map<string, THREE.Material>();
+
+/** «га-га?» speech bubble; one material per text. */
+function bubbleMaterial(text: string): THREE.Material {
+  let found = bubbles.get(text);
+  if (!found) {
+    const texture = canvasTexture(
+      256,
+      (ctx) => {
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = '#3a2a14';
+        ctx.lineWidth = 8;
+        ctx.beginPath();
+        ctx.roundRect(8, 8, 240, 86, 40);
+        ctx.fill();
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(110, 92);
+        ctx.lineTo(128, 116);
+        ctx.lineTo(146, 92);
+        ctx.fill();
+        ctx.fillStyle = '#3a2a14';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = '900 46px system-ui, sans-serif';
+        ctx.fillText(text, 128, 52, 220);
+      },
+      120,
+    );
+    found = withFog(new THREE.MeshLambertMaterial({ map: texture, transparent: true, emissive: 0xffffff, emissiveMap: texture }));
+    bubbles.set(text, found);
+  }
+  return found;
 }
 
 const ARC = new THREE.TorusGeometry(0.11, 0.028, 8, 16, Math.PI);
@@ -130,6 +178,11 @@ export function createChick(color = 0xffd84a, accessory: Accessory | null = null
     return { pivot, side };
   });
 
+  // The Goose's give-away: a long neck that shoots out for a moment. Hidden for chicks.
+  const neck = cylinder(0.13, 0.17, 1, body, 0, 0, 0, 12);
+  neck.visible = false;
+  bob.add(neck);
+
   // --- Head: everything on it tilts and bobs together ---
   const head = new THREE.Group();
   head.position.set(0, 0.92, 0.02);
@@ -215,6 +268,10 @@ export function createChick(color = 0xffd84a, accessory: Accessory | null = null
   snooze.add(box(0.2, 0.05, 0.03, ink, 0, 0.09, 0), diagonal, box(0.2, 0.05, 0.03, ink, 0, -0.09, 0));
   snooze.position.set(0.42, 0.8, 0);
   head.add(stars, bang, snooze);
+  const talk = new THREE.Mesh(BUBBLE, bubbleMaterial(t('goose.tell')));
+  talk.position.set(0, 1.15, 0);
+  talk.visible = false;
+  head.add(talk);
 
   // The chick's shadow is the blob underneath: the sun's shadow map is static.
   root.traverse((node) => {
@@ -257,7 +314,7 @@ export function createChick(color = 0xffd84a, accessory: Accessory | null = null
 
   return {
     root,
-    update(x, z, facing, moving, emotion, time, dt) {
+    update(x, z, facing, moving, emotion, time, dt, stretch = 0, bubble = false) {
       if (emotion !== shown) show(emotion);
       root.position.set(x, 0, z);
       // Turn towards the heading along the shortest arc.
@@ -294,7 +351,16 @@ export function createChick(color = 0xffd84a, accessory: Accessory | null = null
       }
       head.rotation.z = tilt;
       head.rotation.x = nod;
-      head.position.y = 0.92 + lift;
+      // Neck out: the head rides up on it, then drops back.
+      const reach = stretch * 0.55;
+      head.position.y = 0.92 + lift + reach;
+      neck.visible = reach > 0.01;
+      if (neck.visible) {
+        neck.scale.set(1, reach + 0.1, 1);
+        neck.position.set(0, 0.5 + (reach + 0.1) / 2, 0.02);
+      }
+      talk.visible = bubble;
+      talk.rotation.y = -heading + Math.PI / 4;
       // Floating marks face the camera regardless of where the chick looks.
       bang.rotation.y = -heading + Math.PI / 4;
       snooze.rotation.y = -heading + Math.PI / 4;

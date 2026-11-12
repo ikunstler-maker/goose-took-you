@@ -5,14 +5,22 @@ import {
   DIZZY_COOLDOWN,
   DIZZY_TIME,
   NEWS_BROADCAST_TIME,
+  PACK_COOLDOWN,
+  PACK_FIRST_COOLDOWN,
+  PACK_RANGE,
   PARTICIPANTS,
+  REPORT_RANGE,
+  TELL_BUBBLE_RANGE,
+  TELL_MAX,
+  TELL_MIN,
+  TELL_TIME,
   PLAYER_RADIUS,
   PLAYER_SPEED,
   SPAWN_SPACING,
   SURPRISED_TIME,
 } from '../config';
 import { createBrain, thinkBot, type Brain } from './bots';
-import { boxInReach, carryBox, rollSlip, type Box } from './cargo';
+import { boxInReach, carryBox, rollSlip, vacationInReach, type Box } from './cargo';
 import { blocked, buildBuckets, generateLevel, roomAt, type Buckets, type Level } from './level';
 import { buildNav, type NavGrid } from './nav';
 import { createRng } from './rng';
@@ -37,10 +45,27 @@ export type Prompt =
   | { kind: 'pickup'; box: number }
   | { kind: 'deliver'; task: number };
 
+/** A chick, or the Goose disguised as one. */
+export type Role = 'chick' | 'goose';
+
 /** One chick in the match: the local player or a bot. */
 export interface Participant {
   id: number;
   isBot: boolean;
+  role: Role;
+  /** False once packed into a «ГАРЯЧА ВІДПУСТКА» box. */
+  alive: boolean;
+  /** Goose only: seconds until the next pack is allowed. */
+  packCooldown: number;
+  /** Goose only: seconds left of the neck stretch, and until the next one. */
+  tell: number;
+  tellIn: number;
+  /** Goose only: someone stands close enough to see «га-га?». */
+  tellBubble: boolean;
+  /** Goose only: chick that `pack` would take right now. */
+  canPack: number | null;
+  /** Vacation box that `report` would report right now. */
+  canReport: number | null;
   /** Index into CHICK_COLORS. */
   color: number;
   /** Index into ACCESSORIES. */
@@ -71,7 +96,8 @@ export interface Participant {
 }
 
 /** Match phase. The lobby is where the player picks a look before the start. */
-export type Phase = 'lobby' | 'play';
+export type Phase = 'lobby' | 'play' | 'over';
+export type Winner = 'chicks' | 'goose';
 
 export interface WorldState {
   level: Level;
@@ -89,6 +115,9 @@ export interface WorldState {
   boxes: Box[];
   /** Seconds left of «Екстрені Новини» on the Lobby screen; 0 when off. */
   broadcast: number;
+  winner: Winner | null;
+  /** Debug/testing: the local player's role at the start instead of a random one. */
+  forcedRole: Role | null;
   tick: number;
 }
 
@@ -99,7 +128,11 @@ export type Command =
   | { type: 'cancelTask' }
   /** Lobby only: pick a look. Bots take the colours left over. */
   | { type: 'setLook'; color: number; accessory: number }
-  | { type: 'start' };
+  | { type: 'start' }
+  /** Goose: pack the chick within reach into a «ГАРЯЧА ВІДПУСТКА» box. */
+  | { type: 'pack' }
+  /** Report the vacation box within reach. Meetings follow in stage 4. */
+  | { type: 'report' };
 
 export type SimEvent =
   | { type: 'roomChanged'; who: number; roomId: number | null }
@@ -114,7 +147,10 @@ export type SimEvent =
   | { type: 'taskOpened'; who: number; taskId: number; kind: TaskKind; seed: number }
   | { type: 'taskClosed'; who: number; taskId: number; done: boolean }
   | { type: 'looksChanged' }
-  | { type: 'started' };
+  | { type: 'started' }
+  | { type: 'packed'; who: number; victim: number; boxId: number }
+  | { type: 'reported'; who: number; boxId: number; victim: number }
+  | { type: 'gameOver'; winner: Winner };
 
 /** The participant this browser controls. */
 export const LOCAL_PLAYER = 0;
@@ -166,7 +202,11 @@ function dressBots(state: WorldState): void {
   }
 }
 
-export function createWorld(seed: number, look: { color: number; accessory: number } = { color: 0, accessory: 0 }): WorldState {
+export function createWorld(
+  seed: number,
+  look: { color: number; accessory: number } = { color: 0, accessory: 0 },
+  forcedRole: Role | null = null,
+): WorldState {
   const level = generateLevel(seed);
   const buckets = buildBuckets(level);
   const stations = findStations(level);
@@ -175,6 +215,14 @@ export function createWorld(seed: number, look: { color: number; accessory: numb
   const participants: Participant[] = spots.map((spot, id) => ({
     id,
     isBot: id !== LOCAL_PLAYER,
+    role: 'chick',
+    alive: true,
+    packCooldown: 0,
+    tell: 0,
+    tellIn: 0,
+    tellBubble: false,
+    canPack: null,
+    canReport: null,
     color: 0,
     accessory: 0,
     x: spot.x,
@@ -211,6 +259,8 @@ export function createWorld(seed: number, look: { color: number; accessory: numb
     tasks,
     boxes: [],
     broadcast: 0,
+    winner: null,
+    forcedRole,
     tick: 0,
   };
   me(state).color = clampIndex(look.color, CHICK_COLORS.length);
@@ -245,10 +295,15 @@ export function applyCommand(state: WorldState, who: number, command: Command): 
     case 'start': {
       if (state.phase !== 'lobby' || actor.isBot) return [];
       state.phase = 'play';
+      dealRoles(state);
       return [{ type: 'started' }];
     }
     case 'interact':
-      return state.phase === 'play' ? interact(state, actor) : [];
+      return state.phase === 'play' && actor.alive ? interact(state, actor) : [];
+    case 'pack':
+      return state.phase === 'play' ? pack(state, actor) : [];
+    case 'report':
+      return state.phase === 'play' ? report(state, actor) : [];
     case 'finishTask':
     case 'cancelTask': {
       if (actor.activeTask === null) return [];
@@ -260,6 +315,100 @@ export function applyCommand(state: WorldState, who: number, command: Command): 
       return events;
     }
   }
+}
+
+/** One random Goose (or the player's forced role); everyone else is a chick. */
+function dealRoles(state: WorldState): void {
+  const rng = createRng(state.level.seed ^ 0x6005e);
+  let goose = rng.int(state.participants.length);
+  if (state.forcedRole === 'goose') goose = LOCAL_PLAYER;
+  else if (state.forcedRole === 'chick' && goose === LOCAL_PLAYER) goose = 1 + rng.int(state.participants.length - 1);
+  for (const p of state.participants) {
+    p.role = p.id === goose ? 'goose' : 'chick';
+    p.packCooldown = p.role === 'goose' ? PACK_FIRST_COOLDOWN : 0;
+    p.tellIn = TELL_MIN + rng.next() * (TELL_MAX - TELL_MIN);
+  }
+}
+
+function pack(state: WorldState, actor: Participant): SimEvent[] {
+  if (actor.role !== 'goose' || !actor.alive || actor.packCooldown > 0 || actor.canPack === null) return [];
+  const victim = state.participants[actor.canPack]!;
+  if (!victim.alive || victim.role === 'goose') return [];
+  victim.alive = false;
+  victim.moving = false;
+  victim.moveX = 0;
+  victim.moveZ = 0;
+  victim.activeTask = null;
+  victim.prompt = null;
+  // Whatever the victim carried falls where it stood.
+  if (victim.carrying !== null) {
+    const held = state.boxes.find((b) => b.id === victim.carrying);
+    if (held) held.carrier = null;
+    victim.carrying = null;
+  }
+  const box: Box = {
+    id: VACATION_BOX_BASE + victim.id,
+    kind: 'vacation',
+    x: victim.x,
+    z: victim.z,
+    carrier: null,
+    task: -1,
+    inside: victim.id,
+    reported: false,
+    travelled: 0,
+    slipAt: -1,
+  };
+  state.boxes.push(box);
+  actor.packCooldown = PACK_COOLDOWN;
+  actor.canPack = null;
+  return [{ type: 'packed', who: actor.id, victim: victim.id, boxId: box.id }];
+}
+
+function report(state: WorldState, actor: Participant): SimEvent[] {
+  if (!actor.alive || actor.canReport === null) return [];
+  const box = state.boxes.find((b) => b.id === actor.canReport);
+  if (!box || box.reported) return [];
+  box.reported = true;
+  actor.canReport = null;
+  return [{ type: 'reported', who: actor.id, boxId: box.id, victim: box.inside! }];
+}
+
+/** Vacation box ids sit above every task id. */
+const VACATION_BOX_BASE = 10_000;
+
+/**
+ * Shared bar: chick tasks only (the Goose's list is a cover). Unfinished tasks
+ * of packed chicks drop out, so the bar can still be filled by the rest.
+ */
+export function progress(state: WorldState): number {
+  let done = 0;
+  let total = 0;
+  for (const task of state.tasks) {
+    const owner = state.participants[task.owner]!;
+    if (owner.role !== 'chick') continue;
+    if (task.done) done++;
+    if (task.done || owner.alive) total++;
+  }
+  return total === 0 ? 0 : done / total;
+}
+
+function checkWin(state: WorldState, events: SimEvent[]): void {
+  if (state.phase !== 'play') return;
+  const chicks = state.participants.filter((p) => p.alive && p.role === 'chick').length;
+  const geese = state.participants.filter((p) => p.alive && p.role === 'goose').length;
+  let winner: Winner | null = null;
+  if (geese > 0 && chicks <= geese) winner = 'goose';
+  else if (progress(state) >= 1) winner = 'chicks';
+  if (!winner) return;
+  state.phase = 'over';
+  state.winner = winner;
+  for (const p of state.participants) {
+    p.moveX = 0;
+    p.moveZ = 0;
+    p.moving = false;
+    p.activeTask = null;
+  }
+  events.push({ type: 'gameOver', winner });
 }
 
 function completeTask(state: WorldState, actor: Participant, task: Task): SimEvent[] {
@@ -301,6 +450,8 @@ function interact(state: WorldState, actor: Participant): SimEvent[] {
       task: task.id,
       travelled: 0,
       slipAt: -1,
+      inside: null,
+      reported: false,
     };
     rollSlip(box, state.level.seed, state.tick);
     state.boxes.push(box);
@@ -327,10 +478,25 @@ function computePrompt(state: WorldState, actor: Participant): Prompt | null {
 
 const samePrompt = (a: Prompt | null, b: Prompt | null): boolean => JSON.stringify(a) === JSON.stringify(b);
 
+/** Nearest living chick within packing reach of the Goose, or null. Cooldown does not matter here. */
+function packTarget(state: WorldState, goose: Participant): number | null {
+  let best: number | null = null;
+  let bestDistance = PACK_RANGE;
+  for (const o of state.participants) {
+    if (o === goose || !o.alive || o.role !== 'chick') continue;
+    const distance = Math.hypot(o.x - goose.x, o.z - goose.z);
+    if (distance <= bestDistance) {
+      best = o.id;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
 /** Moves one participant and updates its face, box and prompt. */
 function stepParticipant(state: WorldState, p: Participant, dt: number, events: SimEvent[]): void {
   const { level, buckets } = state;
-  p.moving = state.phase === 'play' && p.activeTask === null && (p.moveX !== 0 || p.moveZ !== 0);
+  p.moving = state.phase === 'play' && p.alive && p.activeTask === null && (p.moveX !== 0 || p.moveZ !== 0);
   p.bumpCooldown = Math.max(0, p.bumpCooldown - dt);
   p.emotionTime = Math.max(0, p.emotionTime - dt);
 
@@ -390,10 +556,29 @@ function stepParticipant(state: WorldState, p: Participant, dt: number, events: 
     }
   }
 
-  const prompt = state.phase === 'play' ? computePrompt(state, p) : null;
-  if (!samePrompt(prompt, p.prompt)) {
+  const playing = state.phase === 'play' && p.alive;
+  const prompt = playing ? computePrompt(state, p) : null;
+  const canReport = playing ? (vacationInReach(state.boxes, p.x, p.z, REPORT_RANGE)?.id ?? null) : null;
+  const canPack = playing && p.role === 'goose' ? packTarget(state, p) : null;
+  if (!samePrompt(prompt, p.prompt) || canReport !== p.canReport || canPack !== p.canPack) {
     p.prompt = prompt;
+    p.canReport = canReport;
+    p.canPack = canPack;
     events.push({ type: 'promptChanged', who: p.id });
+  }
+
+  if (p.role === 'goose' && state.phase === 'play') {
+    p.packCooldown = Math.max(0, p.packCooldown - dt);
+    if (p.tell > 0) p.tell = Math.max(0, p.tell - dt);
+    else {
+      p.tellIn -= dt;
+      if (p.tellIn <= 0) {
+        p.tell = TELL_TIME;
+        p.tellIn = TELL_MIN + ((state.tick * 7919 + p.id * 31) % 1000) / 1000 * (TELL_MAX - TELL_MIN);
+      }
+    }
+    p.tellBubble =
+      p.tell > 0 && state.participants.some((o) => o !== p && o.alive && Math.hypot(o.x - p.x, o.z - p.z) <= TELL_BUBBLE_RANGE);
   }
 
   if (p.emotionTime === 0) {
@@ -407,6 +592,7 @@ export function step(state: WorldState, dt: number): SimEvent[] {
   for (const p of state.participants) if (p.brain) events.push(...thinkBot(state, state.nav, p, dt, send));
   for (const p of state.participants) stepParticipant(state, p, dt, events);
   state.broadcast = Math.max(0, state.broadcast - dt);
+  checkWin(state, events);
   state.tick++;
   return events;
 }

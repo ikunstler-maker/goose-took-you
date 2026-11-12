@@ -1,7 +1,7 @@
 import { getLang, setLang, t, type I18nKey, type Lang } from '../i18n';
 import type { RoomType } from '../sim/prefabs';
-import { taskProgress, type Task } from '../sim/tasks';
-import { LOCAL_PLAYER, me, type WorldState } from '../sim/world';
+import type { Task } from '../sim/tasks';
+import { LOCAL_PLAYER, me, progress, type WorldState } from '../sim/world';
 
 export interface Hud {
   setRoom(type: RoomType | null): void;
@@ -9,7 +9,7 @@ export interface Hud {
   /** Redraws the task list, the shared progress bar and the interaction prompt. */
   setTasks(world: WorldState): void;
   /** Short shout bubble in the middle of the screen, e.g. a slipping box. */
-  shout(key: I18nKey): void;
+  shout(key: I18nKey, params?: Record<string, string | number>): void;
 }
 
 const el = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -33,10 +33,12 @@ export function createHud(handlers: { onNewOffice(): void; onLangChange(lang: La
   const drawTasks = (): void => {
     if (!world) return;
     const { tasks, stations, level } = world;
-    const progress = taskProgress(tasks);
-    progressLabel.textContent = progress >= 1 ? t('hud.allDone') : t('hud.progress');
-    progressFill.style.width = `${progress * 100}%`;
-    tasksTitle.textContent = t('hud.tasks');
+    const bar = progress(world);
+    progressLabel.textContent = bar >= 1 ? t('hud.allDone') : t('hud.progress');
+    progressFill.style.width = `${bar * 100}%`;
+    const goose = me(world).role === 'goose' && world.phase !== 'lobby';
+    tasksTitle.textContent = goose ? t('hud.tasksFake') : t('hud.tasks');
+    el('controls').textContent = goose ? t('hud.controlsGoose') : t('hud.controls');
     const items = tasks
       .filter((task) => task.owner === LOCAL_PLAYER)
       .map((task) => {
@@ -61,7 +63,19 @@ export function createHud(handlers: { onNewOffice(): void; onLangChange(lang: La
 
   const promptText = (w: WorldState): string => {
     const self = me(w);
-    if (w.phase !== 'play' || self.activeTask !== null) return '';
+    if (w.phase !== 'play' || self.activeTask !== null || !self.alive) return '';
+    const lines: string[] = [];
+    if (self.canPack !== null) {
+      lines.push(self.packCooldown > 0 ? t('hud.packWait', { seconds: Math.ceil(self.packCooldown) }) : t('hud.pack', { key: 'Q' }));
+    }
+    if (self.canReport !== null) lines.push(t('hud.report', { key: 'R' }));
+    const main = mainPrompt(w);
+    if (main) lines.unshift(main);
+    return lines.join(' · ');
+  };
+
+  const mainPrompt = (w: WorldState): string => {
+    const self = me(w);
     const p = self.prompt;
     if (p?.kind === 'task') return t('hud.interact', { key: 'E', task: t(`task.${w.tasks[p.task]!.kind}`) });
     if (p?.kind === 'pickup') return t('hud.pickup', { key: 'E' });
@@ -117,8 +131,8 @@ export function createHud(handlers: { onNewOffice(): void; onLangChange(lang: La
       world = value;
       drawTasks();
     },
-    shout(key) {
-      shoutEl.textContent = t(key);
+    shout(key, params) {
+      shoutEl.textContent = t(key, params);
       shoutEl.hidden = false;
       shoutEl.classList.remove('pop');
       void shoutEl.offsetWidth;

@@ -3,8 +3,9 @@ import { TICK } from '../config';
 import { cellOf, findPath, fitsIn, nearestFree } from './nav';
 import { applyCommand, createWorld, LOCAL_PLAYER, step, type SimEvent, type WorldState } from './world';
 
+/** The player is an idle Goose, so every bot is a chick and nobody gets packed. */
 function started(seed: number): WorldState {
-  const state = createWorld(seed);
+  const state = createWorld(seed, undefined, 'goose');
   applyCommand(state, LOCAL_PLAYER, { type: 'start' });
   return state;
 }
@@ -41,7 +42,7 @@ describe('bots', () => {
     expect(state.participants.map((p) => [p.x, p.z])).toEqual(before);
   });
 
-  it('walk to their stations and finish all their tasks, cargo included', () => {
+  it('walk to their stations, finish all their tasks (cargo included) and win', () => {
     for (const seed of [1, 42, 77]) {
       const state = started(seed);
       const events = runBots(state, 600);
@@ -50,6 +51,8 @@ describe('bots', () => {
       expect(left, `seed ${seed}`).toEqual([]);
       expect(events.some((e) => e.type === 'boxPicked' && e.who !== LOCAL_PLAYER)).toBe(true);
       expect(state.boxes).toHaveLength(0);
+      expect(state.winner).toBe('chicks');
+      expect(events.some((e) => e.type === 'gameOver')).toBe(true);
     }
   }, 120_000);
 

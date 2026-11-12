@@ -898,3 +898,73 @@ button:hover {
   padding: 12px;
   font-size: 16px;
 }
+
+/* Match: role card, packed banner, game over */
+#banner {
+  position: fixed;
+  top: 130px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  gap: 4px;
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 12px 22px;
+  border-radius: 18px;
+  background: #fff8e6;
+  border: 3px solid var(--ink);
+  text-align: center;
+  pointer-events: none;
+  animation: client-in 0.3s ease-out;
+}
+
+#banner[hidden],
+#over[hidden] {
+  display: none;
+}
+
+#banner strong {
+  font-size: 22px;
+}
+
+#banner.goose {
+  background: #3a2a14;
+  color: #fff8e6;
+  border-color: #ff6a3d;
+}
+
+#over {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 6px;
+  background: rgba(255, 236, 170, 0.88);
+  text-align: center;
+}
+
+#over.goose {
+  background: rgba(58, 42, 20, 0.88);
+  color: #fff8e6;
+}
+
+#over h2 {
+  margin: 0;
+  font-size: 44px;
+}
+
+#over p {
+  margin: 0;
+  font-size: 17px;
+}
+
+#over .over-you {
+  font-size: 22px;
+  font-weight: 900;
+}
+
+#over button {
+  margin-top: 14px;
+  padding: 12px 26px;
+  font-size: 18px;
+}

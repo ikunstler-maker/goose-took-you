@@ -36,3 +36,19 @@ export function computeVisibility(level: Level, x: number, z: number, out: Uint8
     }
   }
 }
+
+/** One observer sees a point: within VISION_RADIUS and no wall or window in between. */
+export function canSee(level: Level, ax: number, az: number, bx: number, bz: number): boolean {
+  const dx = bx - ax;
+  const dz = bz - az;
+  const dist = Math.hypot(dx, dz);
+  if (dist > VISION_RADIUS) return false;
+  const n = level.size;
+  const steps = Math.ceil(dist / 0.4);
+  for (let s = 1; s < steps; s++) {
+    const sx = Math.floor(ax + (dx * s) / steps);
+    const sz = Math.floor(az + (dz * s) / steps);
+    if (level.cells[sz * n + sx] !== FLOOR) return false;
+  }
+  return true;
+}
