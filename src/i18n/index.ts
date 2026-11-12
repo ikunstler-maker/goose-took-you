@@ -15,6 +15,8 @@ export function getLang(): Lang {
   return current;
 }
 
-export function t(key: I18nKey): string {
-  return DICTS[current][key];
+/** Looks up a string; `{name}` placeholders are filled from `params`. */
+export function t(key: I18nKey, params?: Record<string, string | number>): string {
+  const text = DICTS[current][key];
+  return params ? text.replace(/\{(\w+)\}/g, (m, name: string) => (name in params ? String(params[name]) : m)) : text;
 }

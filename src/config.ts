@@ -45,3 +45,30 @@ export const CAMERA_ZOOM_MIN = 4.5;
 export const CAMERA_ZOOM_MAX = 8;
 export const CAMERA_ZOOM_DEFAULT = 6.5;
 export const CAMERA_FOLLOW_RATE = 6;
+
+/** Tasks: how many each participant gets and how close the chick must stand to a station, metres. */
+export const TASKS_PER_PLAYER = 4;
+export const INTERACT_RANGE = 1.2;
+
+/** Mini-game «Відбитись від правок Модуса». */
+export const MODUS_TARGET = 15;
+/** Seconds between new edit stickers at the start and at the hardest point. */
+export const MODUS_SPAWN_START = 1.1;
+export const MODUS_SPAWN_MIN = 0.45;
+/** Spawn interval shrinks by this many seconds per closed sticker. */
+export const MODUS_SPAWN_RAMP = 0.04;
+/** Chaos added per second by every open sticker, percent. */
+export const MODUS_CHAOS_PER_STICKER = 2.2;
+/** Chaos drained when a sticker is closed, percent. */
+export const MODUS_CHAOS_RELIEF = 3;
+export const MODUS_MAX_STICKERS = 9;
+/** Pause after losing before a new round starts, seconds. */
+export const MODUS_RETRY_DELAY = 1.5;
+
+/** Mini-game «Креатив один в один»: wires (nodes per side) and switches. */
+export const COPYCAT_WIRES = 4;
+export const COPYCAT_SWITCHES = 3;
+/** How long the "Done!" banner stays before a won mini-game closes, seconds. */
+export const MINIGAME_DONE_PAUSE = 0.9;
+/** Height of the task arrows above stations, metres. */
+export const MARKER_HEIGHT = 2.1;
