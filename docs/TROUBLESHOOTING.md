@@ -24,6 +24,13 @@ Entry format (≤8 lines):
 
 ## Build
 
+### Vercel: `vite: command not found`
+- Symptom: `sh: line 1: vite: command not found`, `Command "vite build" exited with 127`.
+- Root cause: the deployed commit has no `package.json` (e.g. `main` before the stage 1 merge), so nothing was installed.
+- Fix: none needed; deploy a commit that contains the project. Preset must be Vite.
+- Verify: the Vercel deployment for the PR branch is green.
+- Seen: 2026-11-12
+
 ## Render
 
 ### Object.assign on an Object3D breaks the page
