@@ -2,7 +2,8 @@ import { CAMERA_ALERT_TIME, CAMERA_RADIUS, CHICK_COLORS } from '../config';
 import { t } from '../i18n';
 import { cameraSees, cameraSpots, cameraView, type CameraSpot } from '../sim/cameras';
 import { FLOOR } from '../sim/level';
-import type { WorldState } from '../sim/world';
+import { shownLook } from '../sim/roulette';
+import { LOCAL_PLAYER, type WorldState } from '../sim/world';
 
 /**
  * Security camera screen: a 2×2 wall of top-down CCTV feeds. Every chick,
@@ -118,7 +119,7 @@ export function createCameraScreen(onClose: () => void): CameraScreen {
       }
       for (const id of view.participants) {
         const p = world.participants[id]!;
-        g.fillStyle = hex(CHICK_COLORS[p.color] ?? 0xffffff);
+        g.fillStyle = hex(CHICK_COLORS[shownLook(world, p, LOCAL_PLAYER).color] ?? 0xffffff);
         g.beginPath();
         g.arc((p.x - ox) * scale, (p.z - oz) * scale, 6, 0, Math.PI * 2);
         g.fill();

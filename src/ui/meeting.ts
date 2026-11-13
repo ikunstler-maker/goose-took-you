@@ -14,7 +14,7 @@ export interface MeetingView {
 }
 
 /** Phrases offered in the quick-report bar, in order. */
-const PHRASES: ChatKind[] = ['where', 'sawIn', 'sawTask', 'idle', 'saw', 'suspect', 'trust', 'defend', 'pixel', 'tablet', 'sysadmin', 'sysadminLie'];
+const PHRASES: ChatKind[] = ['where', 'sawIn', 'sawTask', 'idle', 'saw', 'suspect', 'trust', 'defend', 'pixel', 'tablet', 'sysadmin', 'sysadminLie', 'sawMorph', 'sawVanish', 'feather', 'rustle'];
 
 const hex = (color: number): string => `#${color.toString(16).padStart(6, '0')}`;
 

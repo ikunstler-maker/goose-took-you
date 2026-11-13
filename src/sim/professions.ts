@@ -11,6 +11,7 @@ import {
 } from '../config';
 import { remember } from './notes';
 import { createRng } from './rng';
+import { gooseSkill, rollNext, skillActive, unseen } from './roulette';
 import type { Participant, SimEvent, WorldState } from './world';
 
 /**
@@ -52,6 +53,7 @@ export function dealProfessions(state: WorldState, forced: Profession | null, lo
     p.charged = true;
     p.ductLeft = 0;
     p.outAt = -1;
+    if (p.role === 'goose') rollNext(state, p);
   }
   const chicks = rng.shuffle(state.participants.filter((p) => p.role === 'chick').map((p) => p.id));
   const kinds = rng.shuffle([...PROFESSIONS]);
@@ -73,7 +75,7 @@ export function tagTarget(state: WorldState, p: Participant): number | null {
   let best: number | null = null;
   let bestDistance = TAG_RANGE;
   for (const o of state.participants) {
-    if (o === p || !o.alive || o.under !== null) continue;
+    if (o === p || !o.alive || unseen(o)) continue;
     const distance = Math.hypot(o.x - p.x, o.z - p.z);
     if (distance <= bestDistance) {
       best = o.id;
@@ -85,6 +87,7 @@ export function tagTarget(state: WorldState, p: Participant): number | null {
 
 /** The skill key: the Analyst tags someone, the Team Lead opens the tablet. SysAdmins use rugs with E; Streamers have nothing to press. */
 export function useSkill(state: WorldState, actor: Participant): SimEvent[] {
+  if (actor.role === 'goose') return gooseSkill(state, actor);
   if (state.phase !== 'play' || !actor.alive || actor.under !== null || actor.role !== 'chick') return [];
   if (actor.profession === 'analyst') {
     if (actor.skillCooldown > 0) return [];
@@ -106,7 +109,8 @@ export function useSkill(state: WorldState, actor: Participant): SimEvent[] {
 
 /** Skill timers and the pixel's trail, every tick of play. */
 export function stepSkills(state: WorldState, p: Participant, dt: number): void {
-  p.skillCooldown = Math.max(0, p.skillCooldown - dt);
+  // The Goose's cooldown waits until its trick is over.
+  if (!skillActive(p)) p.skillCooldown = Math.max(0, p.skillCooldown - dt);
   p.tablet = Math.max(0, p.tablet - dt);
   const tag = p.tag;
   if (!tag) return;

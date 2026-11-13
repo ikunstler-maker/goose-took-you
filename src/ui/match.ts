@@ -35,7 +35,9 @@ export function createMatchScreens(handlers: { onNewMatch(): void }): MatchScree
       bannerTitle.textContent = job ? t('role.job', { job: t(`job.${job}`) }) : t(self.role === 'goose' ? 'role.goose' : 'role.chick');
       bannerText.textContent = job
         ? t(`job.hint.${job}`, { key: isTouch() ? `«${t(`skill.${job}`)}»` : 'F' })
-        : t(self.role === 'goose' ? 'role.gooseHint' : 'role.chickHint');
+        : self.role === 'goose'
+          ? t('role.gooseHint', { key: isTouch() ? `«${t('skill.goose')}»` : 'F' })
+          : t('role.chickHint');
     } else if (bannerKind === 'packed') {
       banner.classList.remove('goose');
       bannerTitle.textContent = self.ejected ? t('meeting.out.ejected') : t('box.vacation');

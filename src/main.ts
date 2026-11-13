@@ -1,10 +1,11 @@
-import { ALARM_EVERY, HEARING_RANGE, HONK_HEAR_RANGE, KNOCK_EVERY, STEP_EVERY, TICK } from './config';
+import { ALARM_EVERY, HEARING_RANGE, HONK_HEAR_RANGE, KNOCK_EVERY, MODEM_HEAR_RANGE, STEP_EVERY, TICK, VANISH_TIME } from './config';
 import { createSound, type SoundName } from './audio/sound';
 import { createMinigameHost } from './minigames/host';
 import { createBadges, type BadgesView } from './render/badges';
 import { createBoxes } from './render/boxes';
 import { createBroadcast, type BroadcastView } from './render/broadcast';
 import { createConfetti } from './render/confetti';
+import { createTricks } from './render/tricks';
 import { createCarpets, type CarpetsView } from './render/carpets';
 import { createChicks } from './render/chicks';
 import { createTaskMarkers, type TaskMarkers } from './render/markers';
@@ -53,6 +54,8 @@ const chicks = createChicks();
 stage.scene.add(chicks.root);
 const boxes = createBoxes();
 stage.scene.add(boxes.root);
+const tricks = createTricks();
+stage.scene.add(tricks.root);
 
 let world: WorldState;
 let office: OfficeView | null = null;
@@ -73,6 +76,7 @@ function randomSeed(): number {
 }
 
 function rebuildOffice(): void {
+  tricks.reset();
   if (office) {
     stage.scene.remove(office.root);
     office.dispose();
@@ -212,6 +216,16 @@ function hear(event: SimEvent): void {
     return;
   }
   if (event.type === 'sabotageEnded' && event.fixed) sound.play('fixed');
+  // The Goose roulette: a glitch where it is seen, a modem squeal nearby, leaves rustling.
+  if (event.type === 'morphed' || event.type === 'vanished') {
+    sound.play('glitch', event.who === LOCAL_PLAYER ? 1 : loudness(event.x, event.z));
+  }
+  if (event.type === 'modem') {
+    const self = me(world);
+    const gain = event.who === LOCAL_PLAYER ? 0.6 : Math.max(0, 1 - Math.hypot(event.x - self.x, event.z - self.z) / MODEM_HEAR_RANGE);
+    if (gain > 0) sound.play('modem', gain);
+  }
+  if (event.type === 'rustled') sound.play('rustle', loudness(event.x, event.z));
   if (event.type === 'newsLaunched') {
     // Confetti and cheers reach whoever is close enough to see the button.
     confetti.burst(event.x, event.z);
@@ -380,6 +394,16 @@ function handle(events: SimEvent[]): void {
         break;
       case 'tabletOpened':
         sound.play('open');
+        break;
+      case 'morphed': {
+        // The Goose learns what the roulette gave it only now.
+        const self = me(world);
+        if (self.morphTo !== null) hud.shout('hud.morphYou', { color: t(`look.color.${world.participants[self.morphTo]!.color}` as I18nKey) });
+        else hud.shout('hud.unmorphYou');
+        break;
+      }
+      case 'vanished':
+        hud.shout('hud.vanishYou', { seconds: VANISH_TIME });
         break;
       case 'bumped':
       case 'sabotageFixed':
@@ -699,6 +723,7 @@ function frame(now: number): void {
   if (office?.update(world, time, dt)) stage.refreshShadows();
   markers?.update(time);
   boxes.update(world, time);
+  tricks.update(world, time, dt);
   broadcast?.update(world.broadcast, time);
   confetti.update(dt);
   carpets?.update(world, time, dt);

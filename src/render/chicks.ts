@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { ACCESSORIES, CHICK_COLORS, TELL_TIME, TELL_VISIBLE_RANGE } from '../config';
 import { seesHonk } from '../sim/meeting';
+import { shownLook } from '../sim/roulette';
 import { LOCAL_PLAYER, type WorldState } from '../sim/world';
 import { createChick, type ChickView } from './chick';
 import { mat } from './kit';
@@ -24,34 +25,77 @@ export interface ChicksView {
 export function createChicks(): ChicksView {
   const root = new THREE.Group();
   let views: ChickView[] = [];
+  /** The look each view was built with, to rebuild one when a Deepfake changes it. */
+  let looks: string[] = [];
+  /** The player's own Goose fades while invisible: its own copies of the materials. */
+  let ghost: THREE.Material[] = [];
   /** Dives and climb-outs being played, by participant: seconds done, the rug, and where the dive started. */
   const dives = new Map<number, { t: number; x: number; z: number; action: 'in' | 'out'; fromX: number; fromZ: number }>();
   // A soft ring under the local player's chick, so it stands out in a crowd.
   const halo = new THREE.Mesh(HALO, mat(0xfff4c2, { emissive: 0xffe08a, opacity: 0.85 }));
   halo.position.y = 0.035;
+  const lookKey = (world: WorldState, id: number): string => {
+    const p = world.participants[id]!;
+    const look = shownLook(world, p, LOCAL_PLAYER);
+    return `${look.color}:${look.accessory}:${id === LOCAL_PLAYER && p.role === 'goose'}`;
+  };
+
+  /** (Re)builds one participant's chick in the look the local player sees on it. */
+  const build = (world: WorldState, id: number): void => {
+    const p = world.participants[id]!;
+    const old = views[id];
+    if (old) root.remove(old.root);
+    // Only the Goose's own player sees the Goose; to everyone else it is one more chick.
+    const unmasked = id === LOCAL_PLAYER && p.role === 'goose';
+    const look = shownLook(world, p, LOCAL_PLAYER);
+    const view = createChick(CHICK_COLORS[look.color], ACCESSORIES[look.accessory], unmasked);
+    if (unmasked) {
+      // Its own copies of the materials, so it can fade while invisible without fading anyone else.
+      ghost = [];
+      view.root.traverse((node) => {
+        const mesh = node as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        const copy = (mesh.material as THREE.Material).clone();
+        copy.transparent = true;
+        mesh.material = copy;
+        ghost.push(copy);
+      });
+    }
+    if (old) view.root.position.copy(old.root.position);
+    root.add(view.root);
+    views[id] = view;
+    looks[id] = lookKey(world, id);
+  };
+
   return {
     root,
     rebuild(world) {
       root.clear();
       root.add(halo);
       dives.clear();
-      views = world.participants.map((p) => {
-        // Only the Goose's own player sees the Goose; to everyone else it is one more chick.
-        const unmasked = p.id === LOCAL_PLAYER && p.role === 'goose';
-        const view = createChick(CHICK_COLORS[p.color], ACCESSORIES[p.accessory], unmasked);
-        root.add(view.root);
-        return view;
-      });
+      views = [];
+      looks = [];
+      ghost = [];
+      world.participants.forEach((p) => build(world, p.id));
     },
     update(world, time, dt) {
       const n = world.level.size;
       const self = world.participants[LOCAL_PLAYER]!;
       world.participants.forEach((p, i) => {
+        if (views[i] && looks[i] !== lookKey(world, p.id)) build(world, p.id);
         const view = views[i];
         if (!view) return;
         const cell = Math.floor(p.z) * n + Math.floor(p.x);
-        // Packed chicks sit inside their box and are not drawn.
-        view.root.visible = p.alive && p.under === null && (p.id === LOCAL_PLAYER || world.sight[LOCAL_PLAYER]!.cells[cell] === 1);
+        const own = p.id === LOCAL_PLAYER;
+        // Packed chicks sit inside their box and are not drawn; an invisible Goose is not drawn for others,
+        // and flickers back in while it shimmers.
+        const flicker = p.shimmer > 0 && Math.sin(time * 48) < 0;
+        view.root.visible =
+          p.alive && p.under === null && (own || (p.vanish <= 0 && !flicker && world.sight[LOCAL_PLAYER]!.cells[cell] === 1));
+        if (own && ghost.length > 0) {
+          const opacity = p.vanish > 0 ? 0.3 : 1;
+          for (const m of ghost) m.opacity = opacity;
+        }
         // The neck only reads up close; the player's own Goose always shows it to its player.
         const close = p.id === LOCAL_PLAYER || Math.hypot(p.x - self.x, p.z - self.z) <= TELL_VISIBLE_RANGE;
         const neck = p.tell > 0 && close ? Math.sin((p.tell / TELL_TIME) * Math.PI) : 0;

@@ -53,13 +53,18 @@ import {
   TABLET_FRESH,
   TABLET_RECENT,
   TICK,
+  GOOSE_BOT_SKILL_EVERY,
+  GOOSE_MASK_MIN,
+  MORPH_TIME,
 } from '../config';
 import { tabletStatus, tagTarget } from './professions';
+import { skillActive, spotFeather, unseen } from './roulette';
 import { cellCentre, findPath, fitsIn, nearestFree, type NavGrid } from './nav';
 import { createRng, type Rng } from './rng';
 import { WINDOW_TASKS } from './tasks';
 import { meetingTable, noteBox, type Suspicion } from './meeting';
 import type { Note } from './notes';
+import type { RoomType } from './prefabs';
 import { canSee } from './vision';
 import { openFixPoints, propDistance, SABOTAGE_KINDS, sightRadius } from './sabotage';
 import type { Command, Participant, SimEvent, Thought, WorldState } from './world';
@@ -153,6 +158,8 @@ export interface Brain {
   tabletSaw: number | null;
   /** SysAdmin under a rug: where it is really going, to crawl that way. */
   duct: { x: number; z: number } | null;
+  /** Chick: a feather or a plant shaking by itself it noticed; told at the next meeting. */
+  clue: { kind: 'feather' | 'rustle'; room: RoomType | null } | null;
 }
 
 export function createBrain(rng: Rng): Brain {
@@ -195,6 +202,7 @@ export function createBrain(rng: Rng): Brain {
     heard: null,
     tabletSaw: null,
     duct: null,
+    clue: null,
   };
 }
 
@@ -323,7 +331,7 @@ function company(state: WorldState, bot: Participant): number | null {
   let best: number | null = null;
   let bestD = Infinity;
   for (const o of state.participants) {
-    if (o === bot || o.id === suspect || !o.alive || o.under !== null) continue;
+    if (o === bot || o.id === suspect || !o.alive || unseen(o)) continue;
     const d = Math.hypot(o.x - bot.x, o.z - bot.z);
     if (d < bestD) {
       best = o.id;
@@ -338,10 +346,10 @@ function aloneWithSuspect(state: WorldState, bot: Participant): boolean {
   const s = bot.brain!.suspicion;
   if (!s) return false;
   const suspect = state.participants[s.who]!;
-  if (!suspect.alive || suspect.under !== null) return false;
+  if (!suspect.alive || unseen(suspect)) return false;
   if (!canSee(state.level, bot.x, bot.z, suspect.x, suspect.z, Math.min(BOT_WARY_RANGE, sightRadius(state)))) return false;
   return !state.participants.some(
-    (o) => o !== bot && o !== suspect && o.alive && o.under === null && canSee(state.level, bot.x, bot.z, o.x, o.z, Math.min(BOT_COMPANY_RANGE, sightRadius(state))),
+    (o) => o !== bot && o !== suspect && o.alive && !unseen(o) && canSee(state.level, bot.x, bot.z, o.x, o.z, Math.min(BOT_COMPANY_RANGE, sightRadius(state))),
   );
 }
 
@@ -542,6 +550,15 @@ function gooseMind(
     }
   }
 
+  // A borrowed look comes off where nobody sees the glitch, once it has served a while.
+  if (bot.disguise !== null && bot.glitch === 0 && bot.disguiseLeft < MORPH_TIME - GOOSE_MASK_MIN && unwatched(state, bot, bot)) {
+    events.push(...send(bot.id, { type: 'skill' }));
+  }
+  // Now and then, unseen, it spins the roulette just to stir things up.
+  if (bot.skillCooldown === 0 && !skillActive(bot) && rng.next() < dt / GOOSE_BOT_SKILL_EVERY && unwatched(state, bot, bot)) {
+    events.push(...send(bot.id, { type: 'skill' }));
+  }
+
   if (brain.prey !== null) {
     const prey = state.participants[brain.prey]!;
     if (!prey.alive) {
@@ -615,6 +632,7 @@ function chickSkills(state: WorldState, bot: Participant, dt: number, rng: Rng, 
     events.push(...send(bot.id, { type: 'interact' }));
     return true;
   }
+  spotFeather(state, bot);
   if (bot.profession === 'analyst' && bot.skillCooldown === 0 && tagTarget(state, bot) !== null) {
     events.push(...send(bot.id, { type: 'skill' }));
   } else if (bot.profession === 'lead' && bot.charged && bot.tablet === 0 && rng.next() < dt / BOT_TABLET_DELAY) {
@@ -743,6 +761,11 @@ export function thinkBot(state: WorldState, nav: NavGrid, bot: Participant, dt: 
       // A moment of mock panic over the fresh box, then off to the nearest rug if there is one.
       brain.wait = GOOSE_PACK_FREEZE;
       brain.escape = escapeCarpet(state, bot);
+      // The roulette right after a pack: vanish from the scene, or walk off in someone else's look.
+      if (bot.skillCooldown === 0) {
+        events.push(...send(bot.id, { type: 'skill' }));
+        if (bot.vanish > 0) brain.escape = null;
+      }
       return events;
     }
     // The prey moves: re-plan towards where the Goose last saw it.
