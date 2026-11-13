@@ -15,6 +15,7 @@ export interface Minimap {
 
 const TASK = '#ffb400';
 const SELF = '#e5433d';
+const TRAIL = '#4de8ff';
 
 export function createMinimap(): Minimap {
   const wrap = document.createElement('div');
@@ -109,6 +110,25 @@ export function createMinimap(): Minimap {
         g.beginPath();
         g.arc(prop.x * scale, prop.z * scale, Math.max(3, scale * 1.2), 0, Math.PI * 2);
         g.fill();
+      }
+      // The Analyst's pixel: the target's trail, older points fainter, and where it is now.
+      const tag = self.tag;
+      if (tag && tag.trail.length >= 2) {
+        const points = tag.trail.length / 2;
+        g.fillStyle = TRAIL;
+        for (let i = 0; i < points; i++) {
+          g.globalAlpha = 0.25 + (0.75 * (i + 1)) / points;
+          g.beginPath();
+          g.arc(tag.trail[i * 2]! * scale, tag.trail[i * 2 + 1]! * scale, Math.max(1.5, scale * 0.6), 0, Math.PI * 2);
+          g.fill();
+        }
+        g.globalAlpha = 1;
+        const pulse = 1 + 0.35 * Math.sin(performance.now() / 160);
+        g.strokeStyle = TRAIL;
+        g.lineWidth = Math.max(1.5, scale * 0.5);
+        g.beginPath();
+        g.arc(tag.trail[(points - 1) * 2]! * scale, tag.trail[(points - 1) * 2 + 1]! * scale, Math.max(4, scale * 1.8) * pulse, 0, Math.PI * 2);
+        g.stroke();
       }
       g.fillStyle = SELF;
       g.strokeStyle = '#ffffff';

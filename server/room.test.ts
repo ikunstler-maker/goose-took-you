@@ -199,8 +199,9 @@ describe('rooms', () => {
     }
     expect(quiet).toBeGreaterThan(3);
     expect(withMeeting).toBeLessThanOrEqual(1);
-    // After the meeting both parts are cleared.
-    run(r, 120);
+    // After the meeting both parts are cleared (checked right as it ends: bots may call the next one later).
+    for (let t = 0; t < 120 && s.phase === 'meeting'; t += 0.05) r.tick(0.05);
+    run(r, 0.3);
     expect(s.phase).not.toBe('meeting');
     expect(a.view.meeting).toBeNull();
     expect(a.view.clock).toBeNull();

@@ -11,12 +11,14 @@ import { buildOffice, type OfficeView } from './render/office';
 import { createStage } from './render/stage';
 import { setLang, t, type I18nKey } from './i18n';
 import { applyCommand, createWorld, LOCAL_PLAYER, me, setLocalSeat, step, type Command, type Role, type SimEvent, type WorldState } from './sim/world';
+import { PROFESSIONS, type Profession } from './sim/professions';
 import { connect, serverUrl, type Online } from './net/client';
 import { applyView, createMirror, glide, type OwnInput, type Targets } from './net/mirror';
 import { isCode, normalizeCode, type ClientMessage, type PlayerCommand, type WireView } from './net/protocol';
 import { linkToward } from './sim/carpets';
 import { createHud } from './ui/hud';
 import { createMinimap } from './ui/minimap';
+import { createSkillUi } from './ui/skill';
 import { createCameraScreen } from './ui/cameras';
 import { createLobby, type OnlineInfo } from './ui/lobby';
 import { createMatchScreens } from './ui/match';
@@ -99,6 +101,11 @@ function rebuildOffice(): void {
 const confetti = createConfetti();
 stage.scene.add(confetti.root);
 const minimap = createMinimap();
+const skillUi = createSkillUi({
+  onSkill: () => {
+    if (!minigames.isOpen()) send({ type: 'skill' });
+  },
+});
 const cameras = createCameraScreen(() => send({ type: 'stopWatching' }));
 const hud = createHud({
   // Online, the office belongs to the room: only a new match changes it.
@@ -116,6 +123,7 @@ const hud = createHud({
     meeting.relabel();
     soundControls.relabel();
     touch.relabel();
+    skillUi.relabel();
   },
 });
 
@@ -266,6 +274,11 @@ function handle(events: SimEvent[]): void {
       markers?.refresh(world);
       if (event.type === 'sabotageEnded' && event.fixed) hud.shout(`sabotage.fixed.${event.kind}`);
     }
+    if (event.type === 'siren') sound.play('siren', 0.8);
+    if (event.type === 'sneezed') {
+      sound.play('sneeze');
+      hud.shout(event.who === LOCAL_PLAYER ? 'hud.sneezeYou' : 'hud.sneeze');
+    }
     if (event.type === 'packed') {
       const box = world.boxes.find((b) => b.id === event.boxId);
       if (box) cameras.packed(world, box.x, box.z);
@@ -344,6 +357,13 @@ function handle(events: SimEvent[]): void {
         break;
       case 'carpet':
         hud.setTasks(world);
+        break;
+      case 'tagged':
+        sound.play('click');
+        hud.shout('hud.tagged', { color: t(`look.color.${world.participants[event.target]!.color}` as I18nKey) });
+        break;
+      case 'tabletOpened':
+        sound.play('open');
         break;
       case 'bumped':
       case 'sabotageFixed':
@@ -470,6 +490,12 @@ function showState(view: WireView, changed: Partial<WireView>, events: SimEvent[
   }
 }
 
+/** `?job=analyst|lead|sysadmin|streamer` gives the player that profession when it plays a chick, for testing. */
+function jobFromUrl(): Profession | null {
+  const raw = new URLSearchParams(window.location.search).get('job');
+  return PROFESSIONS.find((p) => p === raw) ?? null;
+}
+
 /** `?role=goose|chick` fixes the player's role for testing; otherwise it is random. */
 function roleFromUrl(): Role | null {
   const raw = new URLSearchParams(window.location.search).get('role');
@@ -481,7 +507,7 @@ function startOffice(seed: number): void {
   meeting.hide();
   screens.hideAll();
   const look = loadSettings();
-  world = createWorld(seed, { color: look.color, accessory: look.accessory }, roleFromUrl());
+  world = createWorld(seed, { color: look.color, accessory: look.accessory }, roleFromUrl(), jobFromUrl());
   rebuildOffice();
   chicks.rebuild(world);
   lobby.show(me(world).color, me(world).accessory);
@@ -547,6 +573,7 @@ const touch = createTouchControls(canvas, {
   onAction: (action) => {
     if (minigames.isOpen()) return;
     if (action === 'overheat' || action === 'call') send({ type: 'sabotage', kind: action });
+    else if (action === 'skill') send({ type: 'skill' });
     else send({ type: action });
     sound.play('click');
   },
@@ -578,6 +605,10 @@ window.addEventListener('keydown', (event) => {
   }
   if ((event.code === 'Digit1' || event.code === 'Digit2') && !event.repeat && !minigames.isOpen()) {
     send({ type: 'sabotage', kind: event.code === 'Digit1' ? 'overheat' : 'call' });
+    return;
+  }
+  if (event.code === 'KeyF' && !event.repeat && !minigames.isOpen()) {
+    send({ type: 'skill' });
     return;
   }
   if (event.code === 'KeyR' && !event.repeat && !minigames.isOpen()) {
@@ -639,6 +670,7 @@ function frame(now: number): void {
   if (world.phase === 'meeting') meeting.update(world);
   hud.setAlarm(world);
   minimap.update(world);
+  skillUi.update(world);
   cameras.update(world, dt);
   touch.update(world);
   stage.setGloom(world.sabotage?.kind === 'overheat' && world.phase === 'play' ? 1 : 0, dt);
