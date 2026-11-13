@@ -6,6 +6,9 @@ import {
   CAMERA_ZOOM_DEFAULT,
   CAMERA_ZOOM_MAX,
   CAMERA_ZOOM_MIN,
+  EMERGENCY_BOOST,
+  EMERGENCY_RATE,
+  EMERGENCY_TINT,
   GLOOM_FADE,
   PORTRAIT_FIT,
   SHADOW_MAP,
@@ -31,6 +34,8 @@ export interface Stage {
   refreshShadows(): void;
   /** Eases the lights towards day (0) or the overheat blackout (1). */
   setGloom(target: number, dt: number): void;
+  /** While the blackout lasts the emergency light pulses red; call every frame with the clock. */
+  pulseEmergency(time: number): void;
   /** Lighter rendering for phones: fewer pixels, a smaller shadow map. */
   setTouch(on: boolean): void;
   render(): void;
@@ -53,6 +58,8 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
   scene.add(sky);
   const dayColor = new THREE.Color(0xbfe6ff);
   const gloomColor = new THREE.Color(GLOOM_SKY);
+  const skyColor = new THREE.Color(0xf2f9ff);
+  const emergencyColor = new THREE.Color(0xff3b2e);
   let gloom = 0;
   const sun = new THREE.DirectionalLight(0xfff0cf, SUN_LIGHT);
   sun.castShadow = true;
@@ -130,6 +137,12 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
       sky.intensity = SKY_LIGHT + (GLOOM_SKY_LIGHT - SKY_LIGHT) * gloom;
       sun.intensity = SUN_LIGHT + (GLOOM_SUN_LIGHT - SUN_LIGHT) * gloom;
       (scene.background as THREE.Color).copy(dayColor).lerp(gloomColor, gloom);
+    },
+    pulseEmergency(time) {
+      // A slow red breath over the dark office; gone as the lights come back.
+      const pulse = gloom * (0.5 + 0.5 * Math.sin(time * Math.PI * 2 * EMERGENCY_RATE));
+      sky.color.copy(skyColor).lerp(emergencyColor, pulse * EMERGENCY_TINT);
+      sky.intensity = SKY_LIGHT + (GLOOM_SKY_LIGHT - SKY_LIGHT) * gloom + pulse * EMERGENCY_BOOST;
     },
     setTouch(on) {
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, on ? TOUCH_PIXEL_RATIO : 2));

@@ -471,3 +471,8 @@ export const TASK_MIN_TIME: Record<string, number> = {
   badge: 0.4,
 };
 
+/** Emergency light during «Перегрів»: pulses per second (kept slow on purpose), how red it turns and how much brighter at the peak. */
+export const EMERGENCY_RATE = 0.8;
+export const EMERGENCY_TINT = 0.7;
+export const EMERGENCY_BOOST = 0.35;
+
