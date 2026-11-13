@@ -123,7 +123,10 @@ const lobby = createLobby({
   onStart: () => send({ type: 'start' }),
 });
 
-const meeting = createMeetingView({ onVote: (target) => send({ type: 'vote', target }) });
+const meeting = createMeetingView({
+  onVote: (target) => send({ type: 'vote', target }),
+  onSay: (kind, about, room) => send({ type: 'say', kind, about, room }),
+});
 
 const minigames = createMinigameHost({
   onWin: () => send({ type: 'finishTask' }),

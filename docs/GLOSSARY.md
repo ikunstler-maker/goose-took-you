@@ -101,3 +101,4 @@
 | Особлива правка | правка Модуса з підступом: термінова, липка або утікач | `StickerKind`, `MODUS_SPECIAL_*`, `MODUS_RUNNER_SPEED` |
 | Оновлення креативу | конкурент один раз змінює зразок посеред «Креативу один в один» | `CopycatState.updatePending`, `COPYCAT_UPDATE_CHANCE` |
 | Замовник передумав | одноразова зміна зразка в «Кривій» | `CurveState.rebrief`, `CURVE_REBRIEF_CHANCE` |
+| Швидка доповідь | готова репліка гравця на зборах: фраза + курча й/або кімната; підказки «Ви бачили» — правдиві, з побаченого | команда `say`, `sayLine`, `Meeting.hints`, `Participant.seen`, `src/ui/meeting.ts` |

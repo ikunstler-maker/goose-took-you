@@ -8,9 +8,16 @@ import {
   MEETING_SEAT_RADIUS,
   MEETING_TALK,
   MEETING_VOTE,
+  PLAYER_HINTS_MAX,
+  PLAYER_HINTS_MET,
+  PLAYER_SAY_COOLDOWN,
+  PLAYER_SAY_MAX,
+  PLAYER_SWAY_SAW,
+  PLAYER_SWAY_SUS,
+  PLAYER_SWAY_VOUCH,
 } from '../config';
 import { fitsIn } from './nav';
-import type { Note } from './notes';
+import { remember, type Note, type SeenKind } from './notes';
 import type { RoomType } from './prefabs';
 import { createRng, type Rng } from './rng';
 import { canSee } from './vision';
@@ -39,7 +46,53 @@ export type ChatKind =
   | 'sawTask'
   | 'sawFix'
   | 'iFixed'
-  | 'vouch';
+  | 'vouch'
+  /** Quick reports only a human makes: met someone somewhere, a plain suspicion, a plain word for someone. */
+  | 'sawIn'
+  | 'suspect'
+  | 'trust';
+
+/** What each line needs filled in. Lines about someone never point at the speaker. */
+export const CHAT_NEEDS: Record<ChatKind, { about: boolean; room: boolean }> = {
+  found: { about: true, room: true },
+  button: { about: false, room: false },
+  saw: { about: true, room: true },
+  sawCarpet: { about: true, room: true },
+  sus: { about: true, room: true },
+  where: { about: false, room: true },
+  with: { about: true, room: false },
+  agree: { about: true, room: false },
+  defend: { about: false, room: true },
+  nothing: { about: false, room: false },
+  idle: { about: true, room: true },
+  sawTask: { about: true, room: true },
+  sawFix: { about: true, room: true },
+  iFixed: { about: false, room: true },
+  vouch: { about: true, room: true },
+  sawIn: { about: true, room: true },
+  suspect: { about: true, room: false },
+  trust: { about: true, room: false },
+};
+
+/** Lines a human may send; the opening lines are added by the meeting itself. */
+const SAYABLE: ReadonlySet<ChatKind> = new Set<ChatKind>([
+  'saw', 'sawCarpet', 'sus', 'where', 'with', 'agree', 'defend', 'nothing',
+  'idle', 'sawTask', 'sawFix', 'iFixed', 'vouch', 'sawIn', 'suspect', 'trust',
+]);
+/** Claims that pull bot votes towards the named participant, hard and soft; and away from it. */
+const HARD_CLAIMS: ReadonlySet<ChatKind> = new Set<ChatKind>(['saw', 'sawCarpet']);
+const SOFT_CLAIMS: ReadonlySet<ChatKind> = new Set<ChatKind>(['sus', 'suspect', 'idle']);
+const VOUCHES: ReadonlySet<ChatKind> = new Set<ChatKind>(['trust', 'vouch', 'sawTask', 'sawFix', 'with']);
+
+/** How a human's sighting reads as a chat line. */
+const SEEN_LINE: Record<SeenKind, ChatKind> = {
+  pack: 'saw',
+  carpet: 'sawCarpet',
+  idle: 'idle',
+  fixed: 'sawFix',
+  task: 'sawTask',
+  met: 'sawIn',
+};
 
 export interface ChatLine {
   who: number;
@@ -56,6 +109,8 @@ interface Planned {
   line: ChatLine | null;
   vote: number | null;
   who: number;
+  /** The vote rests on what the bot saw itself: nobody talks it out of it. */
+  firm: boolean;
 }
 
 export interface Meeting {
@@ -74,6 +129,15 @@ export interface Meeting {
   /** Set on the result card: who flies out of the office, or null (skip or tie). */
   ejected: number | null;
   tie: boolean;
+  /** Per participant: the room it was in when the meeting was called. */
+  rooms: (RoomType | null)[];
+  /** Per participant: ready-made true lines from what a human saw; empty for bots. */
+  hints: ChatLine[][];
+  /** Per participant: lines said, and when the last one was (`elapsed`). */
+  said: number[];
+  saidAt: number[];
+  /** Per participant: its word has already moved the bots once this meeting. */
+  swayed: boolean[];
 }
 
 /** What a bot chick knows about who did it: 2 = saw it happen, 1 = saw someone near a box. */
@@ -91,8 +155,12 @@ const roomType = (state: WorldState, roomId: number | null): RoomType | null =>
 /** Every bot chick that sees the Goose pack someone (or use a rug) remembers it for sure. */
 export function noteDeed(state: WorldState, goose: Participant, victim: Participant | null, deed: 'pack' | 'carpet'): void {
   for (const p of state.participants) {
-    if (!p.brain || p === goose || p === victim || !p.alive || p.role !== 'chick') continue;
+    if (p === goose || p === victim || !p.alive || p.role !== 'chick') continue;
     if (!canSee(state.level, p.x, p.z, goose.x, goose.z, sightRadius(state))) continue;
+    if (!p.brain) {
+      remember(p, deed, goose.id, roomType(state, goose.roomId));
+      continue;
+    }
     // A pack outweighs a rug sighting; never downgrade.
     if (p.brain.suspicion?.level === 2 && p.brain.suspicion.deed === 'pack' && deed === 'carpet') continue;
     p.brain.suspicion = { who: goose.id, level: 2, room: roomType(state, goose.roomId), deed };
@@ -189,9 +257,25 @@ export function startMeeting(state: WorldState, caller: Participant, victim: num
     plan: planBots(state, caller, victim, roomsBefore, buddies, rng),
     ejected: null,
     tie: false,
+    rooms: roomsBefore,
+    hints: state.participants.map((p) => hintsFor(state, p, roomsBefore[p.id] ?? null)),
+    said: state.participants.map(() => 0),
+    saidAt: state.participants.map(() => -PLAYER_SAY_COOLDOWN),
+    swayed: state.participants.map(() => false),
   };
+  // A human caller opens too, with the plain facts.
+  if (!caller.brain) {
+    state.meeting.chat.push(
+      victim !== null
+        ? { who: caller.id, kind: 'found', about: victim, room: roomsBefore[caller.id] ?? null }
+        : { who: caller.id, kind: 'button', about: null, room: null },
+    );
+  }
   // Sightings are spent at the meeting; the next one starts from a clean slate.
-  for (const p of state.participants) if (p.brain) p.brain.notes = [];
+  for (const p of state.participants) {
+    if (p.brain) p.brain.notes = [];
+    p.seen = [];
+  }
   events.push({ type: 'meetingStarted', who: caller.id, victim });
   return events;
 }
@@ -224,10 +308,10 @@ function planBots(
 ): Planned[] {
   const plan: Planned[] = [];
   const say = (at: number, who: number, kind: ChatKind, about: number | null = null, room: RoomType | null = null): void => {
-    plan.push({ at, who, line: { who, kind, about, room }, vote: null });
+    plan.push({ at, who, line: { who, kind, about, room }, vote: null, firm: false });
   };
-  const vote = (who: number, target: number): void => {
-    plan.push({ at: MEETING_TALK + between(rng, 1, MEETING_VOTE * 0.75), who, line: null, vote: target });
+  const vote = (who: number, target: number, firm = false): void => {
+    plan.push({ at: MEETING_TALK + between(rng, 1, MEETING_VOTE * 0.75), who, line: null, vote: target, firm });
   };
   const living = state.participants.filter((p) => p.alive);
   const bots = living.filter((p) => p.brain);
@@ -271,7 +355,7 @@ function planBots(
     if (b.role === 'goose') {
       if (accused === b.id) {
         say(t, b.id, 'defend', null, room);
-        vote(b.id, accuser!);
+        vote(b.id, accuser!, true);
       } else if (accused !== null) {
         say(t, b.id, 'agree', accused);
         vote(b.id, accused);
@@ -291,7 +375,7 @@ function planBots(
     }
     if (s && s.level === 2 && state.participants[s.who]!.alive) {
       say(t, b.id, s.deed === 'carpet' ? 'sawCarpet' : 'saw', s.who, s.room);
-      vote(b.id, s.who);
+      vote(b.id, s.who, true);
     } else if (s && s.level === 1 && state.participants[s.who]!.alive) {
       say(t, b.id, 'sus', s.who, s.room);
       vote(b.id, rng.next() < BOT_HUNCH_CHANCE ? s.who : SKIP_VOTE);
@@ -299,7 +383,7 @@ function planBots(
       // It saw the accused do honest work: speaks up instead of piling on.
       const seen = b.brain!.notes.find((n) => n.kind === 'task' && n.who === accused)!;
       say(t, b.id, 'vouch', accused, seen.room);
-      vote(b.id, SKIP_VOTE);
+      vote(b.id, SKIP_VOTE, true);
     } else if (accused !== null && accused !== b.id && rng.next() < BOT_FOLLOW_CHANCE) {
       say(t, b.id, 'agree', accused);
       vote(b.id, accused);
@@ -331,6 +415,81 @@ function noteLine(bot: Participant, state: WorldState): Note | null {
     if (note) return note;
   }
   return notes.find((n) => n.kind === 'fixed') ?? null;
+}
+
+/** Ready-made lines for a human: the gravest sightings first, then its own whereabouts. */
+function hintsFor(state: WorldState, p: Participant, room: RoomType | null): ChatLine[] {
+  if (p.brain || !p.alive) return [];
+  const order: SeenKind[] = ['pack', 'carpet', 'idle', 'fixed', 'task', 'met'];
+  const lines: ChatLine[] = [];
+  for (const kind of order) {
+    for (const n of p.seen) {
+      if (n.kind !== kind || !state.participants[n.who]!.alive) continue;
+      // One line per subject: the gravest thing seen about it.
+      if (lines.some((l) => l.about === n.who)) continue;
+      if (kind === 'met' && lines.filter((l) => l.kind === 'sawIn').length >= PLAYER_HINTS_MET) break;
+      lines.push({ who: p.id, kind: SEEN_LINE[kind], about: n.who, room: n.room });
+    }
+  }
+  return [...lines.slice(0, PLAYER_HINTS_MAX), { who: p.id, kind: 'where', about: null, room }];
+}
+
+/**
+ * A human's quick report. Anything may be said, true or not; the first claim
+ * or vouch of each speaker moves the bots that have no eyewitness reason of their own.
+ */
+export function sayLine(state: WorldState, speaker: Participant, kind: ChatKind, about: number | null, room: RoomType | null): SimEvent[] {
+  const m = state.meeting;
+  if (!m || m.stage === 'result' || !speaker.alive || !SAYABLE.has(kind)) return [];
+  const id = speaker.id;
+  if (m.said[id]! >= PLAYER_SAY_MAX || m.elapsed - m.saidAt[id]! < PLAYER_SAY_COOLDOWN) return [];
+  const needs = CHAT_NEEDS[kind];
+  if (needs.about ? about === null || about === id || !Number.isInteger(about) || !state.participants[about] : about !== null) return [];
+  if (needs.room ? room !== null && !state.level.rooms.some((r) => r.type === room) : room !== null) return [];
+  m.said[id]!++;
+  m.saidAt[id] = m.elapsed;
+  m.chat.push({ who: id, kind, about, room });
+  const events: SimEvent[] = [{ type: 'chat', who: id }];
+  if (about === null || m.swayed[id] || !state.participants[about]!.alive) return events;
+
+  const rng = createRng(((state.level.seed * 7919 + state.tick * 13 + id * 101 + m.chat.length) >>> 0) || 1);
+  const pending = (bot: Participant): Planned | undefined => m.plan.find((p) => p.who === bot.id && p.vote !== null);
+  const reply = (who: number, line: Omit<ChatLine, 'who'>): void => {
+    m.plan.push({ at: m.elapsed + between(rng, 1.2, 2.8), who, line: { who, ...line }, vote: null, firm: false });
+  };
+  const bots = state.participants.filter((p) => p.brain && p.alive && p.id !== id);
+  if (HARD_CLAIMS.has(kind) || SOFT_CLAIMS.has(kind)) {
+    m.swayed[id] = true;
+    const chance = HARD_CLAIMS.has(kind) ? PLAYER_SWAY_SAW : PLAYER_SWAY_SUS;
+    let agreed = false;
+    for (const b of bots) {
+      const vote = pending(b);
+      if (b.id === about) {
+        // The accused answers; a Goose strikes back at whoever pointed at it.
+        reply(b.id, { kind: 'defend', about: null, room: m.rooms[b.id] ?? null });
+        if (vote && b.role === 'goose') {
+          vote.vote = id;
+          vote.firm = true;
+        }
+        continue;
+      }
+      if (!vote || vote.firm) continue;
+      // A bot Goose is glad to pile on someone else.
+      if (b.role !== 'goose' && rng.next() >= chance) continue;
+      vote.vote = about;
+      if (!agreed) reply(b.id, { kind: 'agree', about, room: null });
+      agreed = true;
+    }
+  } else if (VOUCHES.has(kind)) {
+    m.swayed[id] = true;
+    for (const b of bots) {
+      const vote = pending(b);
+      if (!vote || vote.firm || vote.vote !== about || b.role === 'goose') continue;
+      if (rng.next() < PLAYER_SWAY_VOUCH) vote.vote = SKIP_VOTE;
+    }
+  }
+  m.plan.sort((a, b) => a.at - b.at);
+  return events;
 }
 
 /** Records a vote; only in the voting stage, once, by the living, for the living or nobody. */

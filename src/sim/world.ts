@@ -30,6 +30,7 @@ import {
   PLAYER_SPEED,
   SPAWN_SPACING,
   SURPRISED_TIME,
+  PLAYER_MET_EVERY,
 } from '../config';
 import { createBrain, thinkBot, type Brain } from './bots';
 import { boxInReach, carryBox, rollSlip, vacationInReach, type Box } from './cargo';
@@ -47,9 +48,10 @@ import {
   type Task,
   type TaskKind,
 } from './tasks';
-import { castVote, meetingTable, noteDeed, startMeeting, stepMeeting, type Meeting } from './meeting';
+import { castVote, meetingTable, noteDeed, sayLine, startMeeting, stepMeeting, type ChatKind, type Meeting } from './meeting';
 import { carpetInReach, placeCarpets, type Carpet } from './carpets';
-import { noteSeen } from './notes';
+import { noteMet, noteSeen, type Seen } from './notes';
+import type { RoomType } from './prefabs';
 import { computeVisibility } from './vision';
 import {
   findFixPoints,
@@ -146,6 +148,8 @@ export interface Participant {
   activeTask: number | null;
   /** Watching the security cameras; stands still meanwhile, like during a mini-game. */
   watching: boolean;
+  /** Human players: what they saw since the last meeting, newest first. Empty for bots. */
+  seen: Seen[];
   /** Bot plan; null for the local player. */
   brain: Brain | null;
 }
@@ -208,6 +212,8 @@ export type Command =
   | { type: 'think'; thought: Thought }
   /** At a meeting: vote for a participant id, or SKIP_VOTE. */
   | { type: 'vote'; target: number }
+  /** At a meeting: a quick report, built from a phrase, a participant and a room. */
+  | { type: 'say'; kind: ChatKind; about: number | null; room: RoomType | null }
   /** Goose under a rug: crawl to a linked rug. */
   | { type: 'crawl'; to: number }
   /** Goose: start a sabotage. */
@@ -346,6 +352,7 @@ export function createWorld(
     prompt: null,
     activeTask: null,
     watching: false,
+    seen: [],
     brain: id === LOCAL_PLAYER ? null : createBrain(botRng),
   }));
   // Everyone gets a full task list; ids are global so boxes and events stay unambiguous.
@@ -429,6 +436,8 @@ export function applyCommand(state: WorldState, who: number, command: Command): 
     }
     case 'vote':
       return state.phase === 'meeting' ? castVote(state, actor, command.target) : [];
+    case 'say':
+      return state.phase === 'meeting' ? sayLine(state, actor, command.kind, command.about, command.room) : [];
     case 'think':
       if (state.phase !== 'play' || !actor.alive) return [];
       actor.thought = command.thought;
@@ -877,6 +886,7 @@ export function step(state: WorldState, dt: number): SimEvent[] {
   state.broadcast = Math.max(0, state.broadcast - dt);
   for (const c of state.carpets) c.lift = Math.max(0, c.lift - dt);
   if (state.phase === 'play') {
+    if (state.tick % PLAYER_MET_EVERY === 0) noteMet(state);
     for (const task of state.tasks) {
       if (task.rush <= 0) continue;
       task.rush -= dt;

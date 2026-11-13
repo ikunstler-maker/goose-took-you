@@ -350,6 +350,21 @@ export const BOT_IDLE_VOTE_CHANCE = 0.25;
 /** Most recent sightings a bot keeps between meetings. */
 export const BOT_NOTES_MAX = 4;
 
+/** Quick reports: the player's lines at a meeting. Seconds between lines, and lines per meeting. */
+export const PLAYER_SAY_COOLDOWN = 1.5;
+export const PLAYER_SAY_MAX = 8;
+/** Chance an undecided bot follows a player's eyewitness claim, a vague suspicion, or drops its vote after a player vouches. */
+export const PLAYER_SWAY_SAW = 0.6;
+export const PLAYER_SWAY_SUS = 0.3;
+export const PLAYER_SWAY_VOUCH = 0.5;
+/** Sightings a human player keeps between meetings, and how many become ready-made lines. */
+export const PLAYER_SEEN_MAX = 12;
+export const PLAYER_HINTS_MAX = 4;
+/** Of those, at most this many plain «saw X in room Y». */
+export const PLAYER_HINTS_MET = 2;
+/** «Saw X in room Y» is refreshed every this many ticks. */
+export const PLAYER_MET_EVERY = 10;
+
 // Per-round variety of the older mini-games.
 /** «Креатив один в один»: wires and switches are rolled per round within these. */
 export const COPYCAT_WIRES_MIN = 3;

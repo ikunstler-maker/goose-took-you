@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { BUTTON_COOLDOWN, MEETING_RESULT, MEETING_TALK, MEETING_VOTE, PACK_COOLDOWN, TICK } from '../config';
+import {
+  BUTTON_COOLDOWN,
+  MEETING_RESULT,
+  MEETING_TALK,
+  MEETING_VOTE,
+  PACK_COOLDOWN,
+  PLAYER_HINTS_MAX,
+  PLAYER_MET_EVERY,
+  PLAYER_SAY_COOLDOWN,
+  PLAYER_SAY_MAX,
+  TICK,
+} from '../config';
 import { meetingTable, SKIP_VOTE, tally } from './meeting';
 import { applyCommand, createWorld, LOCAL_PLAYER, me, step, type Role, type SimEvent, type WorldState } from './world';
 
@@ -142,5 +153,81 @@ describe('meetings', () => {
     applyCommand(state, LOCAL_PLAYER, { type: 'interact' });
     run(state, MEETING_TALK + MEETING_VOTE + MEETING_RESULT + 0.1);
     if (state.phase === 'play') expect(me(state).packCooldown).toBeGreaterThan(PACK_COOLDOWN - 1);
+  });
+});
+
+describe('quick reports', () => {
+  function atMeeting(seed: number, role: Role): WorldState {
+    const state = started(seed, role);
+    atButton(state);
+    applyCommand(state, LOCAL_PLAYER, { type: 'interact' });
+    return state;
+  }
+
+  it('are only said at a meeting, well-formed, and not too often', () => {
+    const idle = started(7, 'chick');
+    expect(applyCommand(idle, LOCAL_PLAYER, { type: 'say', kind: 'nothing', about: null, room: null })).toEqual([]);
+
+    const state = atMeeting(7, 'chick');
+    // The human caller opens with the plain fact.
+    expect(state.meeting!.chat[0]).toEqual({ who: LOCAL_PLAYER, kind: 'button', about: null, room: null });
+    const say = (kind: 'suspect' | 'where' | 'found' | 'nothing', about: number | null, room: string | null): SimEvent[] =>
+      applyCommand(state, LOCAL_PLAYER, { type: 'say', kind, about, room: room as never });
+    run(state, PLAYER_SAY_COOLDOWN);
+    expect(say('suspect', null, null)).toEqual([]);
+    expect(say('suspect', LOCAL_PLAYER, null)).toEqual([]);
+    expect(say('suspect', 99, null)).toEqual([]);
+    expect(say('where', null, 'moon')).toEqual([]);
+    expect(say('found', 2, null)).toEqual([]);
+    expect(say('where', null, 'lobby')).toEqual([{ type: 'chat', who: LOCAL_PLAYER }]);
+    expect(state.meeting!.chat).toContainEqual({ who: LOCAL_PLAYER, kind: 'where', about: null, room: 'lobby' });
+    // Too soon after the last line.
+    expect(say('nothing', null, null)).toEqual([]);
+    for (let i = 1; i < PLAYER_SAY_MAX; i++) {
+      run(state, PLAYER_SAY_COOLDOWN);
+      expect(say('nothing', null, null)).toHaveLength(1);
+    }
+    run(state, PLAYER_SAY_COOLDOWN);
+    expect(say('nothing', null, null)).toEqual([]);
+  });
+
+  it('offer what the player really saw', () => {
+    const state = started(7, 'chick');
+    const bot = state.participants[3]!;
+    bot.brain = null;
+    bot.x = me(state).x + 1;
+    bot.z = me(state).z;
+    run(state, TICK * (PLAYER_MET_EVERY + 1));
+    expect(me(state).seen).toContainEqual(expect.objectContaining({ kind: 'met', who: bot.id }));
+    atButton(state);
+    applyCommand(state, LOCAL_PLAYER, { type: 'interact' });
+    const hints = state.meeting!.hints[LOCAL_PLAYER]!;
+    expect(hints.length).toBeLessThanOrEqual(PLAYER_HINTS_MAX + 1);
+    expect(hints[0]).toMatchObject({ who: LOCAL_PLAYER, kind: 'sawIn' });
+    expect(hints[hints.length - 1]!.kind).toBe('where');
+    expect(me(state).seen).toEqual([]);
+    expect(state.meeting!.hints[bot.id === 3 ? 4 : 3]).toEqual([]);
+  });
+
+  it('let a claim pull bot votes: the accused defends itself, the bot Goose piles on', () => {
+    const state = atMeeting(7, 'chick');
+    const goose = state.participants.find((p) => p.role === 'goose')!;
+    const target = state.participants.find((p) => p.brain && p.role === 'chick')!;
+    run(state, PLAYER_SAY_COOLDOWN);
+    applyCommand(state, LOCAL_PLAYER, { type: 'say', kind: 'saw', about: target.id, room: null });
+    run(state, MEETING_TALK + MEETING_VOTE);
+    const m = state.meeting!;
+    expect(m.chat).toContainEqual(expect.objectContaining({ who: target.id, kind: 'defend' }));
+    expect(m.chat).toContainEqual(expect.objectContaining({ kind: 'agree', about: target.id }));
+    expect(m.votes[goose.id]).toBe(target.id);
+  });
+
+  it('let an accused bot Goose vote for the accuser', () => {
+    const state = atMeeting(7, 'chick');
+    const goose = state.participants.find((p) => p.role === 'goose')!;
+    run(state, PLAYER_SAY_COOLDOWN);
+    applyCommand(state, LOCAL_PLAYER, { type: 'say', kind: 'suspect', about: goose.id, room: null });
+    run(state, MEETING_TALK + MEETING_VOTE);
+    expect(state.meeting!.votes[goose.id]).toBe(LOCAL_PLAYER);
   });
 });
