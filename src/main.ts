@@ -13,6 +13,7 @@ import { applyCommand, createWorld, LOCAL_PLAYER, me, step, type Command, type R
 import { linkToward } from './sim/carpets';
 import { createHud } from './ui/hud';
 import { createMinimap } from './ui/minimap';
+import { createCameraScreen } from './ui/cameras';
 import { createLobby } from './ui/lobby';
 import { createMatchScreens } from './ui/match';
 import { createMeetingView } from './ui/meeting';
@@ -92,6 +93,7 @@ function rebuildOffice(): void {
 }
 
 const minimap = createMinimap();
+const cameras = createCameraScreen(() => send({ type: 'stopWatching' }));
 const hud = createHud({
   onNewOffice: () => startOffice(randomSeed()),
   // Decor signs carry text, so the office is redrawn in the new language.
@@ -99,6 +101,7 @@ const hud = createHud({
     saveSettings({ lang });
     rebuildOffice();
     minigames.relabel();
+    cameras.relabel();
     lobby.relabel();
     screens.relabel(world);
     meeting.relabel();
@@ -238,6 +241,8 @@ function handle(events: SimEvent[]): void {
       if (event.type === 'sabotageEnded' && event.fixed) hud.shout(`sabotage.fixed.${event.kind}`);
     }
     if (event.type === 'packed') {
+      const box = world.boxes.find((b) => b.id === event.boxId);
+      if (box) cameras.packed(world, box.x, box.z);
       if (event.victim === LOCAL_PLAYER) {
         minigames.close();
         screens.showPacked(world);
@@ -249,6 +254,14 @@ function handle(events: SimEvent[]): void {
     switch (event.type) {
       case 'roomChanged':
         hud.setRoom(event.roomId === null ? null : world.level.rooms[event.roomId]!.type);
+        break;
+      case 'camerasOpened':
+        cameras.open(world);
+        hud.setTasks(world);
+        break;
+      case 'camerasClosed':
+        cameras.close();
+        hud.setTasks(world);
         break;
       case 'taskOpened':
         minigames.open(event.kind, event.seed);
@@ -267,6 +280,7 @@ function handle(events: SimEvent[]): void {
         break;
       case 'gameOver':
         minigames.close();
+        cameras.close();
         meeting.hide();
         dropInput();
         screens.showOver(world);
@@ -453,6 +467,7 @@ function frame(now: number): void {
   if (world.phase === 'meeting') meeting.update(world);
   hud.setAlarm(world);
   minimap.update(world);
+  cameras.update(world, dt);
   touch.update(world);
   stage.setGloom(world.sabotage?.kind === 'overheat' && world.phase === 'play' ? 1 : 0, dt);
 

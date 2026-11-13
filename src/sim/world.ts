@@ -51,6 +51,7 @@ import {
   findFixPoints,
   fixInReach,
   fixSabotage,
+  propDistance,
   sightRadius,
   startSabotage,
   type FixPoints,
@@ -74,7 +75,9 @@ export type Prompt =
   /** Goose: dive under this rug. */
   | { kind: 'carpet'; carpet: number }
   /** Restart a fan or sign the NDA while a sabotage runs; `point` is a prop index. */
-  | { kind: 'fix'; point: number };
+  | { kind: 'fix'; point: number }
+  /** Security desk: watch the cameras. */
+  | { kind: 'cameras' };
 
 /** A chick, or the Goose disguised as one. */
 export type Role = 'chick' | 'goose';
@@ -135,6 +138,8 @@ export interface Participant {
   prompt: Prompt | null;
   /** Task whose mini-game is open; the chick stands still meanwhile, the office does not. */
   activeTask: number | null;
+  /** Watching the security cameras; stands still meanwhile, like during a mini-game. */
+  watching: boolean;
   /** Bot plan; null for the local player. */
   brain: Brain | null;
 }
@@ -184,6 +189,8 @@ export type Command =
   | { type: 'interact' }
   | { type: 'finishTask' }
   | { type: 'cancelTask' }
+  /** Step away from the security cameras. */
+  | { type: 'stopWatching' }
   /** Lobby only: pick a look. Bots take the colours left over. */
   | { type: 'setLook'; color: number; accessory: number }
   | { type: 'start' }
@@ -201,6 +208,8 @@ export type Command =
   | { type: 'sabotage'; kind: SabotageKind };
 
 export type SimEvent =
+  | { type: 'camerasOpened'; who: number }
+  | { type: 'camerasClosed'; who: number }
   | { type: 'roomChanged'; who: number; roomId: number | null }
   | { type: 'bumped'; who: number }
   | { type: 'promptChanged'; who: number }
@@ -324,6 +333,7 @@ export function createWorld(
     visited: [],
     prompt: null,
     activeTask: null,
+    watching: false,
     brain: id === LOCAL_PLAYER ? null : createBrain(botRng),
   }));
   // Everyone gets a full task list; ids are global so boxes and events stay unambiguous.
@@ -412,6 +422,8 @@ export function applyCommand(state: WorldState, who: number, command: Command): 
       actor.thought = command.thought;
       actor.thoughtTime = THOUGHT_TIME;
       return [];
+    case 'stopWatching':
+      return stopWatching(actor);
     case 'finishTask':
     case 'cancelTask': {
       if (actor.activeTask === null) return [];
@@ -448,6 +460,7 @@ function pack(state: WorldState, actor: Participant): SimEvent[] {
   victim.moveX = 0;
   victim.moveZ = 0;
   victim.activeTask = null;
+  const closed = stopWatching(victim);
   victim.prompt = null;
   // Whatever the victim carried falls where it stood.
   if (victim.carrying !== null) {
@@ -470,7 +483,7 @@ function pack(state: WorldState, actor: Participant): SimEvent[] {
   state.boxes.push(box);
   actor.packCooldown = PACK_COOLDOWN;
   actor.canPack = null;
-  return [{ type: 'packed', who: actor.id, victim: victim.id, boxId: box.id }];
+  return [...closed, { type: 'packed', who: actor.id, victim: victim.id, boxId: box.id }];
 }
 
 function report(state: WorldState, actor: Participant): SimEvent[] {
@@ -574,7 +587,11 @@ function interact(state: WorldState, actor: Participant): SimEvent[] {
     return actor.carpetCooldown > 0 ? [] : carpetAction(state, actor, state.carpets[actor.under]!, 'out');
   }
   const prompt = actor.prompt;
-  if (actor.activeTask !== null || prompt === null) return [];
+  if (actor.activeTask !== null || actor.watching || prompt === null) return [];
+  if (prompt.kind === 'cameras') {
+    actor.watching = true;
+    return [{ type: 'camerasOpened', who: actor.id }];
+  }
   if (prompt.kind === 'fix') {
     const events = fixSabotage(state, actor, prompt.point);
     if (!state.sabotage) refreshVision(state);
@@ -642,11 +659,25 @@ function computePrompt(state: WorldState, actor: Participant): Prompt | null {
   if (box) return { kind: 'pickup', box: box.id };
   const task = taskInReach(state.level, state.stations, state.tasks, actor.id, actor.x, actor.z);
   if (task) return { kind: 'task', task: task.id };
+  if (cameraDeskInReach(state, actor)) return { kind: 'cameras' };
   if (actor.role === 'goose') {
     const carpet = carpetInReach(state.carpets, actor.x, actor.z);
     if (carpet) return { kind: 'carpet', carpet: carpet.id };
   }
   return canPressButton(state, actor) ? { kind: 'button' } : null;
+}
+
+/** Next to the security desk. Anyone alive may watch, the Goose too. */
+function cameraDeskInReach(state: WorldState, actor: Participant): boolean {
+  if (!actor.alive) return false;
+  return state.level.props.some((prop) => prop.hub && prop.kind === 'cameraDesk' && propDistance(prop, actor.x, actor.z) <= INTERACT_RANGE);
+}
+
+/** Leaves the camera screen; returns the close event or nothing. */
+export function stopWatching(actor: Participant): SimEvent[] {
+  if (!actor.watching) return [];
+  actor.watching = false;
+  return [{ type: 'camerasClosed', who: actor.id }];
 }
 
 /** Next to the meeting table, with a press left and the button cooled down. */
@@ -677,7 +708,7 @@ function packTarget(state: WorldState, goose: Participant): number | null {
 /** Moves one participant and updates its face, box and prompt. */
 function stepParticipant(state: WorldState, p: Participant, dt: number, events: SimEvent[]): void {
   const { level, buckets } = state;
-  p.moving = state.phase === 'play' && p.alive && p.activeTask === null && p.under === null && (p.moveX !== 0 || p.moveZ !== 0);
+  p.moving = state.phase === 'play' && p.alive && p.activeTask === null && !p.watching && p.under === null && (p.moveX !== 0 || p.moveZ !== 0);
   p.carpetCooldown = Math.max(0, p.carpetCooldown - dt);
   p.bumpCooldown = Math.max(0, p.bumpCooldown - dt);
   p.emotionTime = Math.max(0, p.emotionTime - dt);

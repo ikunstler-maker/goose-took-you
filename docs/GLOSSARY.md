@@ -88,3 +88,4 @@
 | «Охолоди GPU» | мініігра: утримати температуру вентилятором | `TaskKind: 'gpu'`, `src/minigames/gpu/` |
 | «Занос на 777» | мініігра: зупинити барабани на 7 | `TaskKind: 'slot'`, `src/minigames/slot/` |
 | «Сканер бейджа» | мініігра: рівно провести бейдж | `TaskKind: 'badge'`, `src/minigames/badge/` |
+| Камери спостереження | екран 2×2 за пультом в Охороні | `src/sim/cameras.ts`, `src/ui/cameras.ts`, `Participant.watching`, `CAMERA_*`, команда `stopWatching` |

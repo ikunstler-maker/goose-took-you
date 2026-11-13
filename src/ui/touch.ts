@@ -176,7 +176,7 @@ export function createTouchControls(
   const draw = (world: WorldState, force = false): void => {
     lastWorld = world;
     const self = me(world);
-    const playing = touchMode && world.phase === 'play' && self.alive && self.activeTask === null;
+    const playing = touchMode && world.phase === 'play' && self.alive && self.activeTask === null && !self.watching;
     const goose = playing && self.role === 'goose';
     const hidden = playing && self.under !== null;
     const wait = Math.ceil(world.sabotageCooldown);

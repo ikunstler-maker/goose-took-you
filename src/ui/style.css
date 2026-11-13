@@ -1778,3 +1778,41 @@ html.touch .lines-tools {
     --size: min(80vw, 320px) !important;
   }
 }
+
+/* Security cameras (stage 6) */
+#cameras {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(40, 28, 10, 0.35);
+}
+
+#cameras[hidden] {
+  display: none;
+}
+
+.cameras-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 220px));
+  gap: 10px;
+  justify-content: center;
+}
+
+.cameras-tile {
+  margin: 0;
+}
+
+.cameras-tile canvas {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 10px;
+}
+
+.cameras-tile figcaption {
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+}

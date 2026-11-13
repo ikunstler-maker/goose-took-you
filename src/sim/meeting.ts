@@ -134,6 +134,10 @@ export function startMeeting(state: WorldState, caller: Participant, victim: num
       events.push({ type: 'taskClosed', who: p.id, taskId: p.activeTask, done: false });
       p.activeTask = null;
     }
+    if (p.watching) {
+      p.watching = false;
+      events.push({ type: 'camerasClosed', who: p.id });
+    }
     p.moveX = 0;
     p.moveZ = 0;
     p.moving = false;
