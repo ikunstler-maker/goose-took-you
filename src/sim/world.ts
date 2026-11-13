@@ -39,6 +39,8 @@ import {
   DUCT_TIME,
   SKILL_FIRST_COOLDOWN,
   VANISH_SPEED,
+  VISION_RADIUS,
+  CARRY_VACATION_SPEED,
 } from '../config';
 import { createBrain, thinkBot, type Brain } from './bots';
 import { boxInReach, carryBox, rollSlip, vacationInReach, type Box } from './cargo';
@@ -56,9 +58,10 @@ import {
   type Task,
   type TaskKind,
 } from './tasks';
-import { castVote, meetingTable, noteDeed, noteHonk, noteTell, sayLine, startMeeting, stepMeeting, type ChatKind, type Meeting } from './meeting';
+import { castVote, meetingTable, noteCarry, noteDeed, noteHonk, noteTell, sayLine, startMeeting, stepMeeting, type ChatKind, type Meeting } from './meeting';
 import { carpetInReach, placeCarpets, type Carpet } from './carpets';
 import { afterPack, dealProfessions, stepSiren, stepSkills, useSkill, type Profession, type Siren, type Tag } from './professions';
+import { becomeSpirit, createSpiritBots, popShield, spiritWalk, stepSpiritBots, type SpiritBot } from './spirits';
 import { skillBusy, stepClues, stepRoulette, type Feather, type GooseSkill, type Rustle } from './roulette';
 import { noteMet, noteSeen, type Seen } from './notes';
 import type { RoomType } from './prefabs';
@@ -95,7 +98,9 @@ export type Prompt =
   /** Security desk: watch the cameras. */
   | { kind: 'cameras' }
   /** The Giant Green Button, while the participant's news edit waits for it. */
-  | { kind: 'greenButton'; task: number };
+  | { kind: 'greenButton'; task: number }
+  /** Goose with a vacation box in its wings: put it down here. */
+  | { kind: 'drop' };
 
 /** A chick, or the Goose disguised as one. */
 export type Role = 'chick' | 'goose';
@@ -190,6 +195,8 @@ export interface Participant {
   /** Incognito: seconds left invisible, then of the shimmer before it is fully back. */
   vanish: number;
   shimmer: number;
+  /** Seconds left of the Holy Farmer's shield; nobody sees it until a pack bursts it. */
+  shield: number;
 }
 
 /** Match phase. The lobby is where the player picks a look before the start. */
@@ -236,6 +243,10 @@ export interface WorldState {
   /** Feathers left by a Deepfake, and plants an invisible Goose shook. */
   feathers: Feather[];
   rustles: Rustle[];
+  /** Spirit bots wandering the realm; each participant out of the match takes one's place. */
+  spirits: SpiritBot[];
+  /** The Holy Farmer: the first chick packed; null until then. */
+  farmer: number | null;
   tick: number;
 }
 
@@ -323,7 +334,13 @@ export type SimEvent =
   /** The modem squeal of an Incognito coming back at (x, z): heard nearby. */
   | { type: 'modem'; who: number; x: number; z: number }
   /** A potted plant shakes: something invisible brushed past it. */
-  | { type: 'rustled'; prop: number; x: number; z: number };
+  | { type: 'rustled'; prop: number; x: number; z: number }
+  /** The Holy Farmer shielded `target`; only the Farmer knows. */
+  | { type: 'shielded'; who: number; target: number }
+  /** A pack hit a shield at (x, z): the box bursts into confetti. */
+  | { type: 'shieldPopped'; who: number; victim: number; x: number; z: number }
+  /** The Goose put a vacation box down. */
+  | { type: 'boxDropped'; who: number; boxId: number };
 
 /** The participant this browser controls. */
 /** What one participant sees: 1 for every floor cell in sight; `version` is bumped on every recompute. */
@@ -497,6 +514,7 @@ export function createWorld(
     disguiseLeft: 0,
     vanish: 0,
     shimmer: 0,
+    shield: 0,
   }));
   // Everyone gets a full task list; ids are global so boxes and events stay unambiguous.
   const tasks: Task[] = [];
@@ -528,6 +546,8 @@ export function createWorld(
     siren: null,
     feathers: [],
     rustles: [],
+    spirits: [],
+    farmer: null,
     tick: 0,
   };
   me(state).color = clampIndex(look.color, CHICK_COLORS.length);
@@ -566,6 +586,7 @@ export function applyCommand(state: WorldState, who: number, command: Command): 
       state.phase = 'play';
       dealRoles(state);
       dealProfessions(state, state.forcedProfession, LOCAL_PLAYER);
+      state.spirits = createSpiritBots(state);
       // Everyone starts in the lobby: that room is known from the first second.
       for (const p of state.participants) p.visited = p.roomId === null ? [] : [p.roomId];
       return [{ type: 'started' }];
@@ -575,7 +596,8 @@ export function applyCommand(state: WorldState, who: number, command: Command): 
     case 'leave':
       return leave(state, actor);
     case 'interact':
-      return state.phase === 'play' && actor.alive && !skillBusy(actor) ? interact(state, actor) : [];
+      // Spirits only open their own mini-games.
+      return state.phase === 'play' && !skillBusy(actor) ? interact(state, actor) : [];
     case 'pack':
       return state.phase === 'play' && !skillBusy(actor) ? pack(state, actor) : [];
     case 'report':
@@ -638,6 +660,11 @@ function pack(state: WorldState, actor: Participant): SimEvent[] {
   if (actor.role !== 'goose' || !actor.alive || actor.packCooldown > 0 || actor.canPack === null) return [];
   const victim = state.participants[actor.canPack]!;
   if (!victim.alive || victim.role === 'goose') return [];
+  if (victim.shield > 0) {
+    // The Holy Farmer's shield: the box bursts in the Goose's wings, before everyone's eyes, the victim's too.
+    noteDeed(state, actor, null, 'pack');
+    return popShield(actor, victim);
+  }
   noteDeed(state, actor, victim, 'pack');
   victim.alive = false;
   victim.moving = false;
@@ -667,7 +694,12 @@ function pack(state: WorldState, actor: Participant): SimEvent[] {
   state.boxes.push(box);
   actor.packCooldown = PACK_COOLDOWN;
   actor.canPack = null;
-  return [...closed, { type: 'packed', who: actor.id, victim: victim.id, boxId: box.id }, ...afterPack(state, actor, victim, box)];
+  const events: SimEvent[] = [...closed, { type: 'packed', who: actor.id, victim: victim.id, boxId: box.id }, ...afterPack(state, actor, victim, box)];
+  // The first chick packed becomes the Holy Farmer; everyone packed goes to the spirit realm.
+  if (state.farmer === null) state.farmer = victim.id;
+  becomeSpirit(state, victim);
+  refreshVision(state, victim);
+  return events;
 }
 
 function report(state: WorldState, actor: Participant): SimEvent[] {
@@ -727,6 +759,11 @@ function checkWin(state: WorldState, events: SimEvent[]): void {
 }
 
 function completeTask(state: WorldState, actor: Participant, task: Task): SimEvent[] {
+  // A spirit's work is its own business: it no longer counts for the living.
+  if (!actor.alive) {
+    task.ghostDone = true;
+    return [{ type: 'taskDone', who: actor.id, taskId: task.id }];
+  }
   task.done = true;
   // Any finished task recharges the Team Lead's tablet.
   if (actor.profession === 'lead') actor.charged = true;
@@ -744,10 +781,24 @@ function completeTask(state: WorldState, actor: Participant, task: Task): SimEve
 function refreshVision(state: WorldState, only: Participant | null = null): void {
   for (const self of only ? [only] : state.participants) {
     if (self.isBot) continue;
-    const radius = self.under !== null ? Math.min(CARPET_VISION, sightRadius(state)) : sightRadius(state);
     const sight = state.sight[self.id]!;
-    computeVisibility(state.level, self.x, self.z, sight.cells, radius);
+    if (!self.alive && state.phase === 'play') spiritSight(state.level, self.x, self.z, sight.cells);
+    else {
+      const radius = self.under !== null ? Math.min(CARPET_VISION, sightRadius(state)) : sightRadius(state);
+      computeVisibility(state.level, self.x, self.z, sight.cells, radius);
+    }
     sight.version++;
+  }
+}
+
+/** A spirit sees everything within VISION_RADIUS: walls do not stop it. */
+function spiritSight(level: Level, x: number, z: number, out: Uint8Array): void {
+  const n = level.size;
+  out.fill(0);
+  for (let cz = Math.max(0, Math.floor(z - VISION_RADIUS)); cz <= Math.min(n - 1, Math.floor(z + VISION_RADIUS)); cz++) {
+    for (let cx = Math.max(0, Math.floor(x - VISION_RADIUS)); cx <= Math.min(n - 1, Math.floor(x + VISION_RADIUS)); cx++) {
+      if (Math.hypot(cx + 0.5 - x, cz + 0.5 - z) <= VISION_RADIUS) out[cz * n + cx] = 1;
+    }
   }
 }
 
@@ -820,8 +871,15 @@ function interact(state: WorldState, actor: Participant): SimEvent[] {
     const box = state.boxes.find((b) => b.id === prompt.box)!;
     box.carrier = actor.id;
     actor.carrying = box.id;
-    rollSlip(box, state.level.seed, state.tick);
+    // A vacation box is held tight: it never slips.
+    if (box.kind === 'cargo') rollSlip(box, state.level.seed, state.tick);
     return [{ type: 'boxPicked', who: actor.id, boxId: box.id }];
+  }
+  if (prompt.kind === 'drop') {
+    const box = state.boxes.find((b) => b.id === actor.carrying)!;
+    box.carrier = null;
+    actor.carrying = null;
+    return [{ type: 'boxDropped', who: actor.id, boxId: box.id }];
   }
   const task = state.tasks[prompt.task]!;
   if (task.kind === 'cargo') {
@@ -859,11 +917,17 @@ function computePrompt(state: WorldState, actor: Participant): Prompt | null {
   if (fix !== null) return { kind: 'fix', point: fix };
   if (actor.carrying !== null) {
     const box = state.boxes.find((b) => b.id === actor.carrying)!;
+    if (box.kind === 'vacation') return { kind: 'drop' };
     const task = state.tasks[box.task]!;
     return actor.roomId !== null && actor.roomId === task.target ? { kind: 'deliver', task: task.id } : null;
   }
   const box = boxInReach(state.boxes, actor.x, actor.z);
   if (box) return { kind: 'pickup', box: box.id };
+  if (actor.role === 'goose') {
+    // The Goose may carry a fresh vacation box off somewhere quieter.
+    const fresh = vacationInReach(state.boxes, actor.x, actor.z, INTERACT_RANGE + 0.4);
+    if (fresh && fresh.carrier === null) return { kind: 'pickup', box: fresh.id };
+  }
   const rushing = rushTask(state, actor.id);
   if (rushing) {
     const button = greenButton(state);
@@ -877,6 +941,16 @@ function computePrompt(state: WorldState, actor: Participant): Prompt | null {
     if (carpet) return { kind: 'carpet', carpet: carpet.id };
   }
   return canPressButton(state, actor) ? { kind: 'button' } : null;
+}
+
+/** Tasks a spirit may still do: mini-games that change nothing in the living office. */
+const SPIRIT_TASKS: ReadonlySet<TaskKind> = new Set(WINDOW_TASKS.filter((kind) => kind !== 'news' && kind !== 'badge'));
+
+/** A spirit's prompt: one of its own mini-games within reach, if not done yet. */
+function spiritPrompt(state: WorldState, p: Participant): Prompt | null {
+  if (p.activeTask !== null) return null;
+  const task = taskInReach(state.level, state.stations, state.tasks, p.id, p.x, p.z);
+  return task && !task.ghostDone && SPIRIT_TASKS.has(task.kind) ? { kind: 'task', task: task.id } : null;
 }
 
 /** The participant's news edit that waits for the Giant Green Button, if any. */
@@ -945,7 +1019,9 @@ export function walk(level: Level, buckets: Buckets, p: { x: number; z: number }
 
 function stepParticipant(state: WorldState, p: Participant, dt: number, events: SimEvent[]): void {
   const { level, buckets } = state;
-  p.moving = state.phase === 'play' && p.alive && p.activeTask === null && !p.watching && p.under === null && (p.moveX !== 0 || p.moveZ !== 0);
+  // Spirits (out of the match) drift on during play, through walls.
+  p.moving = state.phase === 'play' && p.activeTask === null && !p.watching && p.under === null && (p.moveX !== 0 || p.moveZ !== 0);
+  p.shield = Math.max(0, p.shield - dt);
   p.carpetCooldown = Math.max(0, p.carpetCooldown - dt);
   p.bumpCooldown = Math.max(0, p.bumpCooldown - dt);
   p.emotionTime = Math.max(0, p.emotionTime - dt);
@@ -957,7 +1033,10 @@ function stepParticipant(state: WorldState, p: Participant, dt: number, events: 
     p.idleTime = 0;
     const fromX = p.x;
     const fromZ = p.z;
-    const hit = walk(level, buckets, p, p.moveX, p.moveZ, dt, p.vanish > 0 ? VANISH_SPEED : 1);
+    const heavy = p.carrying !== null && state.boxes.some((b) => b.id === p.carrying && b.kind === 'vacation');
+    let hit = false;
+    if (!p.alive) spiritWalk(level, p, p.moveX, p.moveZ, dt);
+    else hit = walk(level, buckets, p, p.moveX, p.moveZ, dt, p.vanish > 0 ? VANISH_SPEED : heavy ? CARRY_VACATION_SPEED : 1);
 
     if (hit) {
       // Running into something at speed leaves the chick dizzy.
@@ -1006,7 +1085,7 @@ function stepParticipant(state: WorldState, p: Participant, dt: number, events: 
 
   const playing = state.phase === 'play' && p.alive;
   const exposed = playing && p.under === null && !skillBusy(p);
-  const prompt = playing ? computePrompt(state, p) : null;
+  const prompt = playing ? computePrompt(state, p) : state.phase === 'play' ? spiritPrompt(state, p) : null;
   const canReport = exposed ? (vacationInReach(state.boxes, p.x, p.z, REPORT_RANGE)?.id ?? null) : null;
   const canPack = exposed && p.role === 'goose' ? packTarget(state, p) : null;
   if (!samePrompt(prompt, p.prompt) || canReport !== p.canReport || canPack !== p.canPack) {
@@ -1099,6 +1178,8 @@ export function step(state: WorldState, dt: number): SimEvent[] {
   if (state.phase === 'play') {
     stepSiren(state, dt);
     stepClues(state, dt);
+    stepSpiritBots(state, dt);
+    if (state.tick % 6 === 0) noteCarry(state);
     if (state.tick % PLAYER_MET_EVERY === 0) noteMet(state);
     for (const task of state.tasks) {
       if (task.rush <= 0) continue;

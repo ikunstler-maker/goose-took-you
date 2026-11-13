@@ -174,6 +174,8 @@ describe('world', () => {
       applyCommand(state, LOCAL_PLAYER, { type: 'move', x, z });
       for (let i = 0; i < 900; i++) {
         step(state, TICK);
+        // Once packed, the player is a spirit and drifts through walls by design.
+        if (!me(state).alive) return;
         expect(blocked(state.level, state.buckets, me(state).x, me(state).z, PLAYER_RADIUS - 1e-6)).toBe(false);
       }
     }

@@ -16,7 +16,7 @@ export interface Note {
 }
 
 /** What a human player saw between meetings; feeds the ready-made lines at the next one. */
-export type SeenKind = NoteKind | 'pack' | 'carpet' | 'met' | 'pixel' | 'morph' | 'vanish';
+export type SeenKind = NoteKind | 'pack' | 'carpet' | 'met' | 'pixel' | 'morph' | 'vanish' | 'carry';
 
 export interface Seen {
   kind: SeenKind;

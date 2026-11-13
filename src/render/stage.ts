@@ -1,4 +1,9 @@
 import * as THREE from 'three';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import {
   CAMERA_FOLLOW_RATE,
   CAMERA_PITCH,
@@ -18,8 +23,31 @@ import {
   GLOOM_SKY_LIGHT,
   GLOOM_SUN_LIGHT,
   SKY_LIGHT,
+  SPIRIT_BLOOM,
+  SPIRIT_BLOOM_RADIUS,
+  SPIRIT_BLOOM_THRESHOLD,
+  SPIRIT_FADE,
   SUN_LIGHT,
 } from '../config';
+
+/**
+ * The spirit realm's look: a soft wobble of the picture, brighter and pastel,
+ * with slow light bands drifting across. Bloom on top gives the soapy halation.
+ */
+const SHIMMER = {
+  uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uAmount: { value: 0 } },
+  vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform float uTime; uniform float uAmount; varying vec2 vUv;
+    void main() {
+      vec2 uv = vUv + uAmount * 0.0025 * vec2(sin(vUv.y * 40.0 + uTime * 2.3), cos(vUv.x * 36.0 + uTime * 1.9));
+      vec4 c = texture2D(tDiffuse, uv);
+      float band = 0.5 + 0.5 * sin((vUv.x + vUv.y) * 9.0 - uTime * 0.8);
+      vec3 pastel = mix(c.rgb, vec3(dot(c.rgb, vec3(0.333))), -0.25) * 1.08 + vec3(0.06, 0.04, 0.09);
+      pastel += band * vec3(0.05, 0.045, 0.02);
+      gl_FragColor = vec4(mix(c.rgb, pastel, uAmount), c.a);
+    }`,
+};
 
 export interface Stage {
   scene: THREE.Scene;
@@ -38,6 +66,8 @@ export interface Stage {
   pulseEmergency(time: number): void;
   /** Lighter rendering for phones: fewer pixels, a smaller shadow map. */
   setTouch(on: boolean): void;
+  /** Eases the spirit realm's glow in (1) or out (0). */
+  setSpirit(target: number, dt: number): void;
   render(): void;
 }
 
@@ -90,8 +120,35 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     camera.lookAt(target);
   };
 
+  // The spirit realm's post effects, built the first time someone becomes a spirit.
+  let spirit = 0;
+  let touch = false;
+  let composer: EffectComposer | null = null;
+  let bloom: UnrealBloomPass | null = null;
+  let shimmer: ShaderPass | null = null;
+  const sizeComposer = (): void => {
+    if (!composer || !bloom) return;
+    composer.setPixelRatio(renderer.getPixelRatio());
+    composer.setSize(window.innerWidth, window.innerHeight);
+    // Phones get a coarser glow: same look, a quarter of the work.
+    const scale = touch ? 0.25 : 0.5;
+    bloom.resolution.set(Math.round(window.innerWidth * scale), Math.round(window.innerHeight * scale));
+  };
+  const ensureComposer = (): void => {
+    if (composer) return;
+    composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), SPIRIT_BLOOM, SPIRIT_BLOOM_RADIUS, SPIRIT_BLOOM_THRESHOLD);
+    composer.addPass(bloom);
+    shimmer = new ShaderPass(SHIMMER);
+    composer.addPass(shimmer);
+    composer.addPass(new OutputPass());
+    sizeComposer();
+  };
+
   const resize = (): void => {
     renderer.setSize(window.innerWidth, window.innerHeight, false);
+    sizeComposer();
     applyCamera();
   };
   window.addEventListener('resize', resize);
@@ -144,7 +201,14 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
       sky.color.copy(skyColor).lerp(emergencyColor, pulse * EMERGENCY_TINT);
       sky.intensity = SKY_LIGHT + (GLOOM_SKY_LIGHT - SKY_LIGHT) * gloom + pulse * EMERGENCY_BOOST;
     },
+    setSpirit(goal, dt) {
+      if (spirit === goal) return;
+      const step = dt / SPIRIT_FADE;
+      spirit = goal > spirit ? Math.min(goal, spirit + step) : Math.max(goal, spirit - step);
+      if (spirit > 0) ensureComposer();
+    },
     setTouch(on) {
+      touch = on;
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, on ? TOUCH_PIXEL_RATIO : 2));
       const size = on ? TOUCH_SHADOW_MAP : SHADOW_MAP;
       if (sun.shadow.mapSize.x !== size) {
@@ -159,7 +223,12 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
       renderer.shadowMap.needsUpdate = true;
     },
     render() {
-      renderer.render(scene, camera);
+      if (spirit > 0 && composer && bloom && shimmer) {
+        bloom.strength = SPIRIT_BLOOM * spirit;
+        shimmer.uniforms.uTime!.value = performance.now() / 1000;
+        shimmer.uniforms.uAmount!.value = spirit;
+        composer.render();
+      } else renderer.render(scene, camera);
     },
   };
 }

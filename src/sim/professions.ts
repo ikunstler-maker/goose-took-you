@@ -11,6 +11,7 @@ import {
 } from '../config';
 import { remember } from './notes';
 import { createRng } from './rng';
+import { castShield } from './spirits';
 import { gooseSkill, rollNext, skillActive, unseen } from './roulette';
 import type { Participant, SimEvent, WorldState } from './world';
 
@@ -87,6 +88,8 @@ export function tagTarget(state: WorldState, p: Participant): number | null {
 
 /** The skill key: the Analyst tags someone, the Team Lead opens the tablet. SysAdmins use rugs with E; Streamers have nothing to press. */
 export function useSkill(state: WorldState, actor: Participant): SimEvent[] {
+  // Out of the match only the Holy Farmer has a skill: the shield.
+  if (!actor.alive) return castShield(state, actor);
   if (actor.role === 'goose') return gooseSkill(state, actor);
   if (state.phase !== 'play' || !actor.alive || actor.under !== null || actor.role !== 'chick') return [];
   if (actor.profession === 'analyst') {

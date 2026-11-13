@@ -74,11 +74,13 @@ describe('packing and reporting', () => {
 
     standBy(state, 4);
     expect(applyCommand(state, LOCAL_PLAYER, { type: 'pack' })).toEqual([]);
-    // The dead do not walk, and cargo-pickup ignores vacation boxes.
+    // The packed one is a spirit now: it drifts on, while its box stays put.
     applyCommand(state, 3, { type: 'move', x: 1, z: 0 });
     const { x } = victim;
+    const boxX = box.x;
     for (let i = 0; i < 30; i++) step(state, TICK);
-    expect(victim.x).toBe(x);
+    expect(victim.x).toBeGreaterThan(x);
+    expect(box.x).toBe(boxX);
   });
 
   it('does not let a chick pack anyone', () => {

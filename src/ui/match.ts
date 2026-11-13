@@ -40,8 +40,11 @@ export function createMatchScreens(handlers: { onNewMatch(): void }): MatchScree
           : t('role.chickHint');
     } else if (bannerKind === 'packed') {
       banner.classList.remove('goose');
-      bannerTitle.textContent = self.ejected ? t('meeting.out.ejected') : t('box.vacation');
-      bannerText.textContent = t(self.ejected ? 'hud.ejectedYou' : 'hud.packedYou');
+      const farmer = world.farmer === LOCAL_PLAYER;
+      bannerTitle.textContent = farmer ? t('job.farmer') : self.ejected ? t('meeting.out.ejected') : t('box.vacation');
+      bannerText.textContent = farmer
+        ? t('hud.farmerYou', { key: isTouch() ? `«${t('skill.farmer')}»` : 'F' })
+        : t('hud.spiritYou');
     }
   };
 
@@ -89,6 +92,10 @@ export function createMatchScreens(handlers: { onNewMatch(): void }): MatchScree
       bannerKind = 'packed';
       fillBanner(world);
       banner.hidden = false;
+      // The realm is to be walked: the card makes room after a while.
+      bannerTimer = window.setTimeout(() => {
+        if (bannerKind === 'packed') banner.hidden = true;
+      }, ROLE_CARD_SECONDS * 2000);
     },
     showOver(world) {
       banner.hidden = true;

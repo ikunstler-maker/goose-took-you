@@ -59,6 +59,7 @@ import {
 } from '../config';
 import { tabletStatus, tagTarget } from './professions';
 import { skillActive, spotFeather, unseen } from './roulette';
+import { spiritMind } from './spirits';
 import { cellCentre, findPath, fitsIn, nearestFree, type NavGrid } from './nav';
 import { createRng, type Rng } from './rng';
 import { WINDOW_TASKS } from './tasks';
@@ -160,6 +161,9 @@ export interface Brain {
   duct: { x: number; z: number } | null;
   /** Chick: a feather or a plant shaking by itself it noticed; told at the next meeting. */
   clue: { kind: 'feather' | 'rustle'; room: RoomType | null } | null;
+  /** Spirit: the desk spot it drifts to; as the Holy Farmer, the living one it follows. */
+  drift: { x: number; z: number } | null;
+  guard: number | null;
 }
 
 export function createBrain(rng: Rng): Brain {
@@ -203,6 +207,8 @@ export function createBrain(rng: Rng): Brain {
     tabletSaw: null,
     duct: null,
     clue: null,
+    drift: null,
+    guard: null,
   };
 }
 
@@ -664,7 +670,8 @@ function planDuct(state: WorldState, bot: Participant, task: number, rng: Rng): 
 /** One bot's decision for this tick. Bots act only through `send`, the same commands the player uses. */
 export function thinkBot(state: WorldState, nav: NavGrid, bot: Participant, dt: number, send: Send): SimEvent[] {
   const brain = bot.brain;
-  if (!brain || state.phase !== 'play' || !bot.alive) return [];
+  if (!brain || state.phase !== 'play') return [];
+  if (!bot.alive) return spiritMind(state, bot, dt, send);
   const rng = createRng(((state.level.seed * 7919 + bot.id * 104729 + state.tick) >>> 0) || 1);
   const events: SimEvent[] = [];
   const halt = (): void => {

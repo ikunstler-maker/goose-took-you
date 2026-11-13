@@ -68,7 +68,8 @@ export function createHud(handlers: { onNewOffice(): void; onLangChange(lang: La
             : task.kind === 'badge' && stations[task.station]!.kind === 'gate'
               ? t('task.badgeGate')
               : t('task.where', { task: t(`task.${task.kind}`), room: t(`room.${roomType}`) });
-        li.classList.toggle('done', task.done);
+        if (task.ghostDone) li.textContent = t('task.ghostDone', { task: li.textContent });
+        li.classList.toggle('done', task.done || task.ghostDone === true);
         return li;
       });
     tasksList.replaceChildren(...items);
@@ -83,7 +84,9 @@ export function createHud(handlers: { onNewOffice(): void; onLangChange(lang: La
 
   const promptText = (w: WorldState): string => {
     const self = me(w);
-    if (w.phase !== 'play' || self.activeTask !== null || self.watching || !self.alive) return '';
+    if (w.phase !== 'play' || self.activeTask !== null || self.watching) return '';
+    // A spirit is only ever offered its own mini-games.
+    if (!self.alive) return self.prompt?.kind === 'task' ? t('hud.interact', { key: keyName('interact'), task: t(`task.${w.tasks[self.prompt.task]!.kind}`) }) : '';
     if (self.under !== null) return t(isTouch() ? 'hud.carpetUnderTouch' : 'hud.carpetUnder', { key: keyName('interact') });
     const lines: string[] = [];
     if (self.canPack !== null) {
@@ -105,6 +108,7 @@ export function createHud(handlers: { onNewOffice(): void; onLangChange(lang: La
     if (p?.kind === 'task') return t('hud.interact', { key: keyName('interact'), task: t(`task.${w.tasks[p.task]!.kind}`) });
     if (p?.kind === 'pickup') return t('hud.pickup', { key: keyName('interact') });
     if (p?.kind === 'deliver') return t('hud.deliver', { key: keyName('interact') });
+    if (p?.kind === 'drop') return t('hud.drop', { key: keyName('interact') });
     if (p?.kind === 'button') return t('hud.button', { key: keyName('interact') });
     if (p?.kind === 'greenButton') return t('hud.greenButton', { key: keyName('interact') });
     const rush = w.tasks.find((task) => task.owner === LOCAL_PLAYER && task.rush > 0);

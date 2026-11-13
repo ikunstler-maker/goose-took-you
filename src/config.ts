@@ -514,3 +514,26 @@ export const EMERGENCY_RATE = 0.8;
 export const EMERGENCY_TINT = 0.7;
 export const EMERGENCY_BOOST = 0.35;
 
+
+/** Spirit realm: everyone out of the match walks through inner walls this much faster and sees without walls blocking. */
+export const SPIRIT_SPEED = 1.5;
+/** Spirit bots wandering the realm from the start; each newly out participant takes one's place. */
+export const SPIRIT_BOTS = 4;
+/** Spirits (bots) stand at a desk this long, seconds. */
+export const SPIRIT_WORK_MIN = 6;
+export const SPIRIT_WORK_MAX = 12;
+/** Holy Farmer (the first chick packed): shields a living participant this close for SHIELD_TIME; then SHIELD_COOLDOWN. Metres, seconds. */
+export const SHIELD_RANGE = 3;
+export const SHIELD_TIME = 12;
+export const SHIELD_COOLDOWN = 40;
+/** The Goose carrying a vacation box walks this much slower; anyone this close reads its «ГАРЯЧА ВІДПУСТКА» sticker. Factor, metres. */
+export const CARRY_VACATION_SPEED = 0.8;
+export const CARRY_LABEL_RANGE = 2.5;
+
+/** Spirit realm look: bloom strength, radius and brightness threshold (the soapy halation), and seconds to fade in or out. */
+export const SPIRIT_BLOOM = 0.6;
+export const SPIRIT_BLOOM_RADIUS = 0.85;
+export const SPIRIT_BLOOM_THRESHOLD = 0.72;
+export const SPIRIT_FADE = 1.2;
+/** Sparkles drifting around a spirit's view. */
+export const SPIRIT_SPARKLES = 140;

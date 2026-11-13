@@ -1,4 +1,5 @@
 import { PLAYER_SAY_COOLDOWN, PLAYER_SPEED, VANISH_SPEED } from '../config';
+import { spiritWalk } from '../sim/spirits';
 import { createWorld, setLocalSeat, walk, type WorldState } from '../sim/world';
 import { unpackSight, type WireView } from './protocol';
 
@@ -54,6 +55,8 @@ export function applyView(world: WorldState, view: WireView, changed: Partial<Wi
   world.sabotage = view.sabotage;
   world.siren = view.siren;
   world.feathers = view.feathers;
+  world.spirits = view.spirits;
+  world.farmer = view.farmer;
   world.rustles = view.rustles;
 
   if (changed.seats || changed.self) {
@@ -171,7 +174,7 @@ export function applyView(world: WorldState, view: WireView, changed: Partial<Wi
 /** May this browser walk its own chick right now, without asking? The same conditions the match uses. */
 const canWalk = (world: WorldState, you: number): boolean => {
   const p = world.participants[you]!;
-  return world.phase === 'play' && p.alive && p.activeTask === null && !p.watching && p.under === null;
+  return world.phase === 'play' && p.activeTask === null && !p.watching && p.under === null;
 };
 
 /**
@@ -189,7 +192,8 @@ export function glide(world: WorldState, targets: Targets, dt: number, you = -1,
       if (pushing) {
         p.facing = Math.atan2(own.x, own.z);
         p.moving = true;
-        walk(world.level, world.buckets, p, own.x, own.z, dt, p.vanish > 0 ? VANISH_SPEED : 1);
+        if (!p.alive) spiritWalk(world.level, p, own.x, own.z, dt);
+        else walk(world.level, world.buckets, p, own.x, own.z, dt, p.vanish > 0 ? VANISH_SPEED : 1);
       }
       const off = Math.hypot(target.x - p.x, target.z - p.z);
       if (own.still < SETTLE_AFTER && off < PLAYER_SPEED * LAG_ALLOWANCE + 0.3) continue;

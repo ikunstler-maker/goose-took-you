@@ -1,7 +1,8 @@
-import { CHICK_COLORS, DUCT_COOLDOWN, GOOSE_SKILL_COOLDOWN, GOOSE_SKILL_SHOW_NEXT, DUCT_TIME, TABLET_FRESH, TABLET_RECENT, TABLET_TIME, TAG_COOLDOWN, TICK } from '../config';
+import { CHICK_COLORS, DUCT_COOLDOWN, GOOSE_SKILL_COOLDOWN, GOOSE_SKILL_SHOW_NEXT, DUCT_TIME, SHIELD_COOLDOWN, TABLET_FRESH, TABLET_RECENT, TABLET_TIME, TAG_COOLDOWN, TICK } from '../config';
 import { t, type I18nKey } from '../i18n';
 import { tabletStatus, tagTarget } from '../sim/professions';
-import { me, type WorldState } from '../sim/world';
+import { shieldTarget } from '../sim/spirits';
+import { LOCAL_PLAYER, me, type WorldState } from '../sim/world';
 import { isTouch } from './touch';
 
 /**
@@ -48,7 +49,8 @@ export function createSkillUi(handlers: { onSkill(): void }): SkillUi {
   const draw = (world: WorldState, force: boolean): void => {
     last = world;
     const self = me(world);
-    const job = world.phase !== 'play' || !self.alive ? null : self.role === 'goose' ? 'goose' : self.profession;
+    const job =
+      world.phase !== 'play' ? null : !self.alive ? (world.farmer === LOCAL_PLAYER ? 'farmer' : null) : self.role === 'goose' ? 'goose' : self.profession;
     let label = '';
     let fill = 0;
     let ready = false;
@@ -92,6 +94,14 @@ export function createSkillUi(handlers: { onSkill(): void }): SkillUi {
         ready = true;
       }
       fill = 1 - self.skillCooldown / GOOSE_SKILL_COOLDOWN;
+    } else if (job === 'farmer') {
+      if (self.skillCooldown > 0) label = t('skill.wait', { seconds: Math.ceil(self.skillCooldown) });
+      else if (shieldTarget(world, self) === null) label = t('skill.noTarget');
+      else {
+        label = t('skill.ready');
+        ready = true;
+      }
+      fill = 1 - self.skillCooldown / SHIELD_COOLDOWN;
     } else if (job === 'streamer') {
       label = t('skill.passive');
       fill = 1;
@@ -101,7 +111,7 @@ export function createSkillUi(handlers: { onSkill(): void }): SkillUi {
       shown = key;
       button.hidden = job === null;
       if (job) {
-        const pressable = job === 'analyst' || job === 'lead' || job === 'goose';
+        const pressable = job === 'analyst' || job === 'lead' || job === 'goose' || job === 'farmer';
         button.disabled = !ready;
         button.classList.toggle('passive', !pressable);
         name.textContent = pressable && !isTouch() ? `F · ${t(`skill.${job}`)}` : t(`skill.${job}`);

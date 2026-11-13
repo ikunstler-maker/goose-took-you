@@ -5,7 +5,8 @@ import type { Carpet } from './carpets';
 import { seesHonk, type ChatLine, type MeetingStage } from './meeting';
 import type { Sabotage, SabotageKind } from './sabotage';
 import type { Profession, Siren, Tag } from './professions';
-import { shownLook, unseen, type Feather, type GooseSkill, type Rustle } from './roulette';
+import { shownId, shownLook, unseen, type Feather, type GooseSkill, type Rustle } from './roulette';
+import type { SpiritBot } from './spirits';
 import type { Task } from './tasks';
 import {
   isAway,
@@ -52,6 +53,10 @@ export interface PlayerView {
   /** Feathers in sight, and plants in sight that shake. */
   feathers: Feather[];
   rustles: Rustle[];
+  /** Spirit bots in sight; only those out of the match see them. */
+  spirits: SpiritBot[];
+  /** The Holy Farmer's seat once there is one: known to all, it is no secret in the realm. */
+  farmer: number | null;
 }
 
 /** A seat as others know it. */
@@ -158,8 +163,11 @@ function onCamera(state: WorldState, viewer: Participant, x: number, z: number):
 /** Can the viewer see this participant right now? Everyone is in plain view outside of play. */
 export function seesBody(state: WorldState, viewer: Participant, p: Participant): boolean {
   if (p === viewer) return true;
-  if (!p.alive || unseen(p)) return false;
-  if (state.phase !== 'play') return true;
+  if (unseen(p)) return false;
+  if (state.phase !== 'play') return p.alive;
+  // Two worlds in one office: spirits see spirits, the living see the living; the Holy Farmer sees both.
+  if (!p.alive) return !viewer.alive && cellSeen(state, viewer.id, p.x, p.z);
+  if (!viewer.alive && state.farmer !== viewer.id) return false;
   return cellSeen(state, viewer.id, p.x, p.z) || onCamera(state, viewer, p.x, p.z);
 }
 
@@ -250,6 +258,8 @@ export function viewFor(state: WorldState, you: number): PlayerView {
     // The hump of a rug out of sight would tell where the Goose hides.
     carpets: state.carpets.map((c) => ({ ...c, links: [...c.links], occupied: c.occupied && (viewer.under === c.id || cellSeen(state, you, c.x, c.z)) })),
     siren: state.siren ? { ...state.siren } : null,
+    spirits: viewer.alive || state.phase !== 'play' ? [] : state.spirits.filter((s) => cellSeen(state, you, s.x, s.z)).map((s) => ({ ...s })),
+    farmer: state.farmer,
     feathers: state.feathers.filter((f) => cellSeen(state, you, f.x, f.z)).map((f) => ({ ...f })),
     rustles: state.rustles.filter((r) => {
       const prop = state.level.props[r.prop]!;
@@ -282,7 +292,7 @@ const PUBLIC: ReadonlySet<SimEvent['type']> = new Set<SimEvent['type']>([
 /** Events only their own seat hears. */
 const PRIVATE: ReadonlySet<SimEvent['type']> = new Set<SimEvent['type']>([
   'rushStarted', 'rushFailed', 'badgeTaken', 'camerasOpened', 'camerasClosed', 'roomChanged',
-  'promptChanged', 'taskDone', 'taskOpened', 'taskClosed', 'tagged', 'tabletOpened',
+  'promptChanged', 'taskDone', 'taskOpened', 'taskClosed', 'tagged', 'tabletOpened', 'shielded',
 ]);
 
 /**
@@ -335,7 +345,12 @@ export function eventsFor(state: WorldState, you: number, events: readonly SimEv
     else if (PRIVATE.has(event.type)) continue;
     else if (event.type === 'sabotageStarted') out.push({ ...event, who: -1 });
     // A packed chick or a diving Goose is gone from view by now: judge by the spot.
-    else if (cellSeen(state, you, who.x, who.z) || onCamera(state, viewer, who.x, who.z)) out.push(event);
+    // A shield bursting shows where, not whose wings it burst in.
+    else if (event.type === 'shieldPopped') {
+      if (cellSeen(state, you, event.x, event.z) || onCamera(state, viewer, event.x, event.z)) out.push({ ...event, who: -1 });
+    }
+    // Eyes see the look: a Deepfake's deeds come under its copy's name.
+    else if (cellSeen(state, you, who.x, who.z) || onCamera(state, viewer, who.x, who.z)) out.push({ ...event, who: shownId(who) });
     else if (event.type === 'sabotageFixed') out.push({ ...event, who: -1 });
   }
   return out;
