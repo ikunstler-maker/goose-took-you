@@ -1,4 +1,3 @@
-import { COPYCAT_SWITCHES, COPYCAT_WIRES } from '../../config';
 import { t } from '../../i18n';
 import type { MinigameContext, MinigameView } from '../types';
 import { connect, createCopycat, disconnect, isMatched, matchRatio, toggleSwitch } from './logic';
@@ -13,7 +12,8 @@ const SNAP = 24;
 const COLORS = ['#ff5d8f', '#3fc3ff', '#ffc93d', '#7be05a', '#b07cff', '#ff8a3d'];
 const SYMBOLS = ['●', '▲', '■', '◆', '★', '✚'];
 
-const nodeY = (i: number): number => 30 + (i * (H - 60)) / Math.max(1, COPYCAT_WIRES - 1);
+let wireCount = 4;
+const nodeY = (i: number): number => 30 + (i * (H - 60)) / Math.max(1, wireCount - 1);
 
 function svgEl<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number>): SVGElementTagNameMap[K] {
   const el = document.createElementNS(SVG, tag);
@@ -31,6 +31,8 @@ function wirePath(left: number, x2: number, y2: number): string {
 /** «Креатив один в один»: copy the competitor's wiring and switches onto an empty board. */
 export function createCopycatView(ctx: MinigameContext): MinigameView {
   const state = createCopycat(ctx.seed);
+  wireCount = state.wires.length;
+  const switchCount = state.switches.length;
   const root = document.createElement('div');
   root.className = 'copycat';
   const goal = document.createElement('p');
@@ -50,7 +52,7 @@ export function createCopycatView(ctx: MinigameContext): MinigameView {
     const wires = svgEl('g', {});
     const nodes = svgEl('g', {});
     svg.append(wires, nodes);
-    for (let i = 0; i < COPYCAT_WIRES; i++) {
+    for (let i = 0; i < wireCount; i++) {
       const left = svgEl('circle', { cx: LEFT_X, cy: nodeY(i), r: NODE_R, fill: COLORS[i]!, class: 'node left' });
       left.dataset.left = String(i);
       const right = svgEl('circle', { cx: RIGHT_X, cy: nodeY(i), r: NODE_R, class: 'node right' });
@@ -61,7 +63,7 @@ export function createCopycatView(ctx: MinigameContext): MinigameView {
     const switches = document.createElement('div');
     switches.className = 'copycat-switches';
     const toggles: HTMLButtonElement[] = [];
-    for (let i = 0; i < COPYCAT_SWITCHES; i++) {
+    for (let i = 0; i < switchCount; i++) {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'switch';
@@ -105,7 +107,7 @@ export function createCopycatView(ctx: MinigameContext): MinigameView {
   const onUp = (event: PointerEvent): void => {
     if (dragFrom === null) return;
     const p = local(event);
-    for (let i = 0; i < COPYCAT_WIRES; i++) {
+    for (let i = 0; i < wireCount; i++) {
       if (Math.hypot(p.x - RIGHT_X, p.y - nodeY(i)) <= SNAP) connect(state, dragFrom, i);
     }
     dragFrom = null;
@@ -115,20 +117,21 @@ export function createCopycatView(ctx: MinigameContext): MinigameView {
   window.addEventListener('pointermove', onMove);
   window.addEventListener('pointerup', onUp);
 
-  const drawWires = (group: SVGGElement, wires: (number | null)[]): void => {
+  const drawWires = (group: SVGGElement, wires: (number | null)[], mono = false): void => {
     group.replaceChildren();
     wires.forEach((right, left) => {
       if (right === null) return;
-      group.append(svgEl('path', { class: 'wire', d: wirePath(left, RIGHT_X, nodeY(right)), stroke: COLORS[left]! }));
+      group.append(svgEl('path', { class: 'wire', d: wirePath(left, RIGHT_X, nodeY(right)), stroke: mono ? '#8a90a0' : COLORS[left]! }));
     });
   };
 
   let won = false;
   function draw(): void {
-    goal.textContent = t('minigame.copycat.goal');
+    goal.textContent = state.updated ? t('minigame.copycat.updated') : state.mono ? t('minigame.copycat.goalMono') : t('minigame.copycat.goal');
+    goal.classList.toggle('alert', state.updated);
     reference.label.textContent = t('minigame.copycat.reference');
     yours.label.textContent = t('minigame.copycat.yours');
-    drawWires(reference.wires, state.targetWires);
+    drawWires(reference.wires, state.targetWires, state.mono);
     drawWires(yours.wires, state.wires);
     yours.wires.append(ghost);
     reference.toggles.forEach((b, i) => b.classList.toggle('on', state.targetSwitches[i]!));

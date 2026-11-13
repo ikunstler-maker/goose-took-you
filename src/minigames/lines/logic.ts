@@ -64,8 +64,8 @@ export function createBrief(seed: number): Brief {
       );
       break;
     case 'b':
-      params.blue = 3;
-      params.green = 2;
+      params.blue = 2 + rng.int(2);
+      params.green = 1 + rng.int(3);
       requirements.push(
         { kind: 'match', need: LINES_COUNT, declared: 'red' },
         { kind: 'match', need: params.blue, ink: 'blue' },
@@ -73,16 +73,16 @@ export function createBrief(seed: number): Brief {
       );
       break;
     case 'c':
-      params.clear = 4;
-      params.blue = LINES_COUNT - 4;
+      params.clear = 3 + rng.int(3);
+      params.blue = LINES_COUNT - params.clear;
       requirements.push(
         { kind: 'match', need: params.clear, ink: 'clear', declared: 'red' },
         { kind: 'match', need: params.blue, ink: 'blue', declared: 'blue' },
       );
       break;
     case 'd':
-      params.red = 2;
-      params.green = 2;
+      params.red = 1 + rng.int(3);
+      params.green = 1 + rng.int(3);
       requirements.push(
         { kind: 'match', need: LINES_COUNT, ink: 'blue' },
         { kind: 'match', need: params.red, declared: 'red' },
