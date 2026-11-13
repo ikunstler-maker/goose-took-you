@@ -35,6 +35,9 @@ import {
   SPAWN_SPACING,
   SURPRISED_TIME,
   PLAYER_MET_EVERY,
+  DUCT_COOLDOWN,
+  DUCT_TIME,
+  SKILL_FIRST_COOLDOWN,
 } from '../config';
 import { createBrain, thinkBot, type Brain } from './bots';
 import { boxInReach, carryBox, rollSlip, vacationInReach, type Box } from './cargo';
@@ -54,6 +57,7 @@ import {
 } from './tasks';
 import { castVote, meetingTable, noteDeed, noteHonk, noteTell, sayLine, startMeeting, stepMeeting, type ChatKind, type Meeting } from './meeting';
 import { carpetInReach, placeCarpets, type Carpet } from './carpets';
+import { afterPack, dealProfessions, stepSiren, stepSkills, useSkill, type Profession, type Siren, type Tag } from './professions';
 import { noteMet, noteSeen, type Seen } from './notes';
 import type { RoomType } from './prefabs';
 import { computeVisibility } from './vision';
@@ -106,7 +110,7 @@ export interface Participant {
   ejected: boolean;
   /** Red button presses left this match. */
   buttonUses: number;
-  /** Goose only: the rug it hides under, or null. Hidden participants are not seen by anyone. */
+  /** The rug it hides under (the Goose, or a SysAdmin chick), or null. Hidden participants are not seen by anyone. */
   under: number | null;
   /** Seconds before the next carpet action. */
   carpetCooldown: number;
@@ -160,6 +164,19 @@ export interface Participant {
   seen: Seen[];
   /** Bot plan; null while a person plays this seat. */
   brain: Brain | null;
+  /** Chick profession, or null for a plain chick and the Goose. Only its owner knows it. */
+  profession: Profession | null;
+  /** Seconds before the skill can be used again (the Analyst's pixel, the SysAdmin's next dive). */
+  skillCooldown: number;
+  /** Analyst: the pixel it placed, or null. */
+  tag: Tag | null;
+  /** Team Lead: seconds left of the open tablet, and whether a charge is ready. */
+  tablet: number;
+  charged: boolean;
+  /** SysAdmin under a rug: seconds before the dust makes it sneeze out. */
+  ductLeft: number;
+  /** Tick it was packed or voted out; -1 while in the match. */
+  outAt: number;
 }
 
 /** Match phase. The lobby is where the player picks a look before the start. */
@@ -199,6 +216,10 @@ export interface WorldState {
   sharedProgress: number | null;
   /** Debug/testing: the local player's role at the start instead of a random one. */
   forcedRole: Role | null;
+  /** Debug/testing: the local player's profession, if it plays a chick. */
+  forcedProfession: Profession | null;
+  /** The Streamer's siren after it was packed, or null. */
+  siren: Siren | null;
   tick: number;
 }
 
@@ -228,7 +249,9 @@ export type Command =
   /** Goose under a rug: crawl to a linked rug. */
   | { type: 'crawl'; to: number }
   /** Goose: start a sabotage. */
-  | { type: 'sabotage'; kind: SabotageKind };
+  | { type: 'sabotage'; kind: SabotageKind }
+  /** The profession's skill (F): the Analyst's pixel, the Team Lead's tablet. */
+  | { type: 'skill' };
 
 export type SimEvent =
   | { type: 'rushStarted'; who: number; taskId: number }
@@ -269,7 +292,14 @@ export type SimEvent =
   | { type: 'sabotageFixed'; who: number; kind: SabotageKind; point: number }
   /** `fixed` is false when a meeting cut the sabotage short. */
   | { type: 'sabotageEnded'; kind: SabotageKind; fixed: boolean }
-  | { type: 'gameOver'; winner: Winner };
+  | { type: 'gameOver'; winner: Winner }
+  /** The Analyst stuck its pixel on `target`; only the Analyst knows. */
+  | { type: 'tagged'; who: number; target: number }
+  | { type: 'tabletOpened'; who: number }
+  /** A SysAdmin sneezed its way out of a rug at (x, z): heard nearby. */
+  | { type: 'sneezed'; who: number; x: number; z: number }
+  /** The packed Streamer's siren, with its box at (x, z): everyone hears it. */
+  | { type: 'siren'; x: number; z: number; victim: number };
 
 /** The participant this browser controls. */
 /** What one participant sees: 1 for every floor cell in sight; `version` is bumped on every recompute. */
@@ -382,6 +412,7 @@ export function createWorld(
   seed: number,
   look: { color: number; accessory: number } = { color: 0, accessory: 0 },
   forcedRole: Role | null = null,
+  forcedProfession: Profession | null = null,
 ): WorldState {
   const level = generateLevel(seed);
   const buckets = buildBuckets(level);
@@ -428,6 +459,13 @@ export function createWorld(
     watching: false,
     seen: [],
     brain: id === LOCAL_PLAYER ? null : createBrain(botRng),
+    profession: null,
+    skillCooldown: 0,
+    tag: null,
+    tablet: 0,
+    charged: false,
+    ductLeft: 0,
+    outAt: -1,
   }));
   // Everyone gets a full task list; ids are global so boxes and events stay unambiguous.
   const tasks: Task[] = [];
@@ -455,6 +493,8 @@ export function createWorld(
     lostTo: null,
     sharedProgress: null,
     forcedRole,
+    forcedProfession,
+    siren: null,
     tick: 0,
   };
   me(state).color = clampIndex(look.color, CHICK_COLORS.length);
@@ -492,6 +532,7 @@ export function applyCommand(state: WorldState, who: number, command: Command): 
       if (state.phase !== 'lobby' || actor.isBot) return [];
       state.phase = 'play';
       dealRoles(state);
+      dealProfessions(state, state.forcedProfession, LOCAL_PLAYER);
       // Everyone starts in the lobby: that room is known from the first second.
       for (const p of state.participants) p.visited = p.roomId === null ? [] : [p.roomId];
       return [{ type: 'started' }];
@@ -508,6 +549,8 @@ export function applyCommand(state: WorldState, who: number, command: Command): 
       return state.phase === 'play' ? report(state, actor) : [];
     case 'crawl':
       return state.phase === 'play' ? crawl(state, actor, command.to) : [];
+    case 'skill':
+      return useSkill(state, actor);
     case 'sabotage': {
       if (state.phase !== 'play') return [];
       const events = startSabotage(state, actor, command.kind);
@@ -591,7 +634,7 @@ function pack(state: WorldState, actor: Participant): SimEvent[] {
   state.boxes.push(box);
   actor.packCooldown = PACK_COOLDOWN;
   actor.canPack = null;
-  return [...closed, { type: 'packed', who: actor.id, victim: victim.id, boxId: box.id }];
+  return [...closed, { type: 'packed', who: actor.id, victim: victim.id, boxId: box.id }, ...afterPack(state, actor, victim, box)];
 }
 
 function report(state: WorldState, actor: Participant): SimEvent[] {
@@ -652,6 +695,8 @@ function checkWin(state: WorldState, events: SimEvent[]): void {
 
 function completeTask(state: WorldState, actor: Participant, task: Task): SimEvent[] {
   task.done = true;
+  // Any finished task recharges the Team Lead's tablet.
+  if (actor.profession === 'lead') actor.charged = true;
   noteSeen(state, 'task', actor);
   const events: SimEvent[] = [{ type: 'taskDone', who: actor.id, taskId: task.id }];
   // A visual task: everyone in the Lobby sees the news, which vouches for the editor.
@@ -684,6 +729,12 @@ function carpetAction(state: WorldState, actor: Participant, carpet: Carpet, act
   actor.moving = false;
   actor.carpetCooldown = CARPET_COOLDOWN;
   if (action !== 'crawl') carpet.lift = CARPET_DIVE;
+  // A SysAdmin only stands the dust so long, and needs a break before the next dive.
+  if (action === 'in') actor.ductLeft = DUCT_TIME;
+  if (action === 'out' && actor.role === 'chick') {
+    actor.ductLeft = 0;
+    actor.skillCooldown = DUCT_COOLDOWN;
+  }
   refreshVision(state, actor);
   return [{ type: 'carpet', who: actor.id, carpet: carpet.id, action }];
 }
@@ -788,7 +839,7 @@ function computePrompt(state: WorldState, actor: Participant): Prompt | null {
   const task = taskInReach(state.level, state.stations, state.tasks, actor.id, actor.x, actor.z);
   if (task) return { kind: 'task', task: task.id };
   if (cameraDeskInReach(state, actor)) return { kind: 'cameras' };
-  if (actor.role === 'goose') {
+  if (actor.role === 'goose' || (actor.profession === 'sysadmin' && actor.skillCooldown === 0)) {
     const carpet = carpetInReach(state.carpets, actor.x, actor.z);
     if (carpet) return { kind: 'carpet', carpet: carpet.id };
   }
@@ -932,6 +983,16 @@ function stepParticipant(state: WorldState, p: Participant, dt: number, events: 
     events.push({ type: 'promptChanged', who: p.id });
   }
 
+  if (state.phase === 'play') stepSkills(state, p, dt);
+  if (p.role === 'chick' && p.under !== null && state.phase === 'play') {
+    p.ductLeft -= dt;
+    // The dust gets up its nose: out it pops, sneezing.
+    if (p.ductLeft <= 0 && p.carpetCooldown === 0) {
+      events.push(...carpetAction(state, p, state.carpets[p.under]!, 'out'));
+      events.push({ type: 'sneezed', who: p.id, x: p.x, z: p.z });
+    }
+  }
+
   if (p.role === 'goose' && state.phase === 'play') {
     p.packCooldown = Math.max(0, p.packCooldown - dt);
     const roll = (salt: number): number => ((state.tick * 7919 + p.id * 31 + salt) % 1000) / 1000;
@@ -973,6 +1034,7 @@ function endMeeting(state: WorldState, events: SimEvent[]): void {
   state.buttonCooldown = BUTTON_COOLDOWN;
   state.sabotageCooldown = SABOTAGE_COOLDOWN;
   for (const p of state.participants) {
+    p.skillCooldown = Math.max(p.skillCooldown, SKILL_FIRST_COOLDOWN);
     if (p.role !== 'goose') continue;
     p.packCooldown = Math.max(p.packCooldown, PACK_COOLDOWN);
     if (p.brain) {
@@ -999,6 +1061,7 @@ export function step(state: WorldState, dt: number): SimEvent[] {
     c.occupied = state.participants.some((p) => p.under === c.id);
   }
   if (state.phase === 'play') {
+    stepSiren(state, dt);
     if (state.tick % PLAYER_MET_EVERY === 0) noteMet(state);
     for (const task of state.tasks) {
       if (task.rush <= 0) continue;

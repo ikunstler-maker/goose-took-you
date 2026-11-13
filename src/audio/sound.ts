@@ -31,7 +31,11 @@ export type SoundName =
   | 'lose'
   /** Giant Green Button: the confetti pop, then a cheering crowd. */
   | 'splash'
-  | 'ovation';
+  | 'ovation'
+  /** The packed Streamer's «MEGA ALARM 777!»: a slot-machine siren. */
+  | 'siren'
+  /** A SysAdmin pops out of a rug: «Апчхи!» */
+  | 'sneeze';
 
 export interface Sound {
   /** Call from a user gesture: browsers keep audio silent until then. */
@@ -185,6 +189,20 @@ export function createSound(volume = SOUND_DEFAULT_VOLUME, muted = false): Sound
       [0.5, 1.1, 1.7].forEach((at, i) => tone('triangle', 500 + i * 90, 950 + i * 120, at, 0.32, 0.05 * g));
     },
     lose: (g) => notes('sawtooth', [392, 349, 311, 262], 0.22, 0.34, 0.1 * g),
+    siren: (g) => {
+      // A wailing up-and-down sweep, then a slot machine's bells.
+      for (let i = 0; i < 4; i++) {
+        tone('sawtooth', 500, 1100, i * 0.5, 0.25, 0.1 * g);
+        tone('sawtooth', 1100, 500, i * 0.5 + 0.25, 0.25, 0.1 * g);
+      }
+      notes('triangle', [1319, 1568, 2093], 0.12, 0.2, 0.08 * g, 2.05);
+    },
+    sneeze: (g) => {
+      // «Ап…» a sharp breath in, «…чхи!» a noisy burst.
+      tone('sine', 300, 700, 0, 0.25, 0.08 * g);
+      hiss('highpass', 2200, 0.3, 0.22, 0.35 * g);
+      tone('square', 420, 180, 0.3, 0.12, 0.07 * g);
+    },
   };
 
   return {

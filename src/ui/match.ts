@@ -1,5 +1,6 @@
 import { t, type I18nKey } from '../i18n';
 import { LOCAL_PLAYER, type WorldState } from '../sim/world';
+import { isTouch } from './touch';
 
 export interface MatchScreens {
   /** Big role card at the start; fades after a few seconds. */
@@ -30,8 +31,11 @@ export function createMatchScreens(handlers: { onNewMatch(): void }): MatchScree
     const self = world.participants[LOCAL_PLAYER]!;
     if (bannerKind === 'role') {
       banner.classList.toggle('goose', self.role === 'goose');
-      bannerTitle.textContent = t(self.role === 'goose' ? 'role.goose' : 'role.chick');
-      bannerText.textContent = t(self.role === 'goose' ? 'role.gooseHint' : 'role.chickHint');
+      const job = self.role === 'chick' ? self.profession : null;
+      bannerTitle.textContent = job ? t('role.job', { job: t(`job.${job}`) }) : t(self.role === 'goose' ? 'role.goose' : 'role.chick');
+      bannerText.textContent = job
+        ? t(`job.hint.${job}`, { key: isTouch() ? `«${t(`skill.${job}`)}»` : 'F' })
+        : t(self.role === 'goose' ? 'role.gooseHint' : 'role.chickHint');
     } else if (bannerKind === 'packed') {
       banner.classList.remove('goose');
       bannerTitle.textContent = self.ejected ? t('meeting.out.ejected') : t('box.vacation');
@@ -58,9 +62,13 @@ export function createMatchScreens(handlers: { onNewMatch(): void }): MatchScree
               ? 'over.reasonTasks'
               : 'over.reasonEjected',
     );
-    (over.querySelector('.over-goose') as HTMLElement).textContent = t('over.gooseWas', {
-      color: t(`look.color.${goose.color}` as I18nKey),
-    });
+    // Who held which profession: told only now.
+    const jobs = world.participants
+      .filter((p) => p.profession !== null)
+      .map((p) => `${t(`look.color.${p.color}` as I18nKey)} — ${t(`job.${p.profession!}`)}`)
+      .join(', ');
+    const gooseLine = t('over.gooseWas', { color: t(`look.color.${goose.color}` as I18nKey) });
+    (over.querySelector('.over-goose') as HTMLElement).textContent = jobs ? `${gooseLine} ${t('over.jobs', { list: jobs })}` : gooseLine;
     button.textContent = t('over.newMatch');
   };
 

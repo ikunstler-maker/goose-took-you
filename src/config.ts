@@ -420,6 +420,40 @@ export const BOT_COMPANY_RANGE = 6;
 export const BOT_WARY_TIME = 6;
 export const BOT_WARY_REST = 12;
 
+/** Chick professions: this many chicks get one each, all different, dealt at the start. Nobody sees another's. */
+export const PROFESSIONS_PER_MATCH = 3;
+/** Every skill is ready this long after the start and after each meeting, seconds. */
+export const SKILL_FIRST_COOLDOWN = 10;
+/** Tracker Analyst: tags someone this close, the trail lasts TAG_TIME, then TAG_COOLDOWN. Metres, seconds. */
+export const TAG_RANGE = 1.5;
+export const TAG_TIME = 20;
+export const TAG_COOLDOWN = 30;
+/** The trail keeps a point this often, seconds. */
+export const TAG_TRAIL_EVERY = 0.5;
+/** Motion Team Lead: the «Табель» tablet stays open this long per charge; a finished task recharges it. Seconds. */
+export const TABLET_TIME = 5;
+/** The tablet says «щойно» for packs younger than this and «до хвилини» up to TABLET_RECENT, seconds. */
+export const TABLET_FRESH = 15;
+export const TABLET_RECENT = 60;
+/** SysAdmin: may stay under a rug this long, then sneezes out; DUCT_COOLDOWN before the next dive. Seconds. */
+export const DUCT_TIME = 8;
+export const DUCT_COOLDOWN = 25;
+/** «Апчхи!» is heard this far, through walls too, metres. */
+export const SNEEZE_HEAR_RANGE = 8;
+/** Casino Streamer: packed, it sets off a siren and an arrow to its box for everyone alive, seconds. */
+export const SIREN_TIME = 4;
+/** Bot chicks this close to the siren drop what they do and run to the box, metres. */
+export const SIREN_BOT_RANGE = 30;
+/** Bots: a rug sighting at a meeting is a vote with this chance (sysadmins dive too), and drops to the second number once the diver says «I am the sysadmin». */
+export const BOT_CARPET_VOTE = 0.8;
+export const BOT_CARPET_CLAIMED = 0.35;
+/** Bot SysAdmin: dives under a rug this close when its goal is farther than BOT_DUCT_FAR, with this chance per new goal. */
+export const BOT_DUCT_RANGE = 5;
+export const BOT_DUCT_FAR = 25;
+export const BOT_DUCT_CHANCE = 0.5;
+/** Bot Team Lead: looks at the tablet this long after charging it, seconds. */
+export const BOT_TABLET_DELAY = 3;
+
 /**
  * The shortest time a mini-game window can honestly take, seconds, by task kind
  * (cargo has no window). A «done» that arrives sooner is treated as closing the

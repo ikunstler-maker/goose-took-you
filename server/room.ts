@@ -36,6 +36,7 @@ export function sanitize(raw: unknown): PlayerCommand | null {
     case 'start':
     case 'pack':
     case 'report':
+    case 'skill':
       return { type: c.type };
     case 'setLook':
       return int(c.color) && int(c.accessory) ? { type: 'setLook', color: c.color, accessory: c.accessory } : null;
