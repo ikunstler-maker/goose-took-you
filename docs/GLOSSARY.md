@@ -102,3 +102,5 @@
 | Оновлення креативу | конкурент один раз змінює зразок посеред «Креативу один в один» | `CopycatState.updatePending`, `COPYCAT_UPDATE_CHANCE` |
 | Замовник передумав | одноразова зміна зразка в «Кривій» | `CurveState.rebrief`, `CURVE_REBRIEF_CHANCE` |
 | Швидка доповідь | готова репліка гравця на зборах: фраза + курча й/або кімната; підказки «Ви бачили» — правдиві, з побаченого | команда `say`, `sayLine`, `Meeting.hints`, `Participant.seen`, `src/ui/meeting.ts` |
+| Місце | одне з 8 курчат партії; його тримає людина або бот; поки людина відійшла, грає бот | `Participant.isBot`, `isAway`, команди `join` / `leave`, подія `seatChanged` |
+| Знімок гравця | усе, що дозволено знати одному місцю; це сервер надсилатиме в браузер | `PlayerView`, `viewFor`, `eventsFor`, `src/sim/view.ts` |

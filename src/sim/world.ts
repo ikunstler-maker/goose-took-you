@@ -90,9 +90,10 @@ export type Prompt =
 /** A chick, or the Goose disguised as one. */
 export type Role = 'chick' | 'goose';
 
-/** One chick in the match: the local player or a bot. */
+/** One chick in the match: a person's seat or a bot. */
 export interface Participant {
   id: number;
+  /** False for a seat a person holds, even while a bot covers for them (see `isAway`). */
   isBot: boolean;
   role: Role;
   /** False once packed into a «ГАРЯЧА ВІДПУСТКА» box or voted out. */
@@ -150,7 +151,7 @@ export interface Participant {
   watching: boolean;
   /** Human players: what they saw since the last meeting, newest first. Empty for bots. */
   seen: Seen[];
-  /** Bot plan; null for the local player. */
+  /** Bot plan; null while a person plays this seat. */
   brain: Brain | null;
 }
 
@@ -165,10 +166,8 @@ export interface WorldState {
   nav: NavGrid;
   phase: Phase;
   participants: Participant[];
-  /** 1 for every floor cell the local player currently sees. */
-  visible: Uint8Array;
-  /** Bumped whenever `visible` is recomputed. */
-  visibleVersion: number;
+  /** Per participant: what it sees. Kept up to date for human seats only. */
+  sight: Sight[];
   stations: Station[];
   tasks: Task[];
   boxes: Box[];
@@ -204,6 +203,9 @@ export type Command =
   /** Lobby only: pick a look. Bots take the colours left over. */
   | { type: 'setLook'; color: number; accessory: number }
   | { type: 'start' }
+  /** Sent by the transport, not by a player: a person takes this seat, or lets go of it. */
+  | { type: 'join' }
+  | { type: 'leave' }
   /** Goose: pack the chick within reach into a «ГАРЯЧА ВІДПУСТКА» box. */
   | { type: 'pack' }
   /** Report the vacation box within reach. Meetings follow in stage 4. */
@@ -240,6 +242,8 @@ export type SimEvent =
   | { type: 'taskOpened'; who: number; taskId: number; kind: TaskKind; seed: number }
   | { type: 'taskClosed'; who: number; taskId: number; done: boolean }
   | { type: 'looksChanged' }
+  /** A seat changed hands between a person and a bot. */
+  | { type: 'seatChanged'; who: number }
   | { type: 'started' }
   | { type: 'packed'; who: number; victim: number; boxId: number }
   | { type: 'reported'; who: number; boxId: number; victim: number }
@@ -257,6 +261,13 @@ export type SimEvent =
   | { type: 'gameOver'; winner: Winner };
 
 /** The participant this browser controls. */
+/** What one participant sees: 1 for every floor cell in sight; `version` is bumped on every recompute. */
+export interface Sight {
+  cells: Uint8Array;
+  version: number;
+}
+
+/** The seat of the human on this device in a local match. Online, every client has its own seat. */
 export const LOCAL_PLAYER = 0;
 
 export function me(state: WorldState): Participant {
@@ -294,16 +305,59 @@ function spawnPoints(level: Level, buckets: Buckets): { x: number; z: number }[]
   return points;
 }
 
-/** Bots take every colour the player did not pick, in a seeded order, and random accessories. */
+/** Bots take every colour the humans did not pick, in a seeded order, and random accessories. */
 function dressBots(state: WorldState): void {
   const rng = createRng(state.level.seed ^ 0x10b5);
-  const player = me(state);
-  const colors = rng.shuffle(CHICK_COLORS.map((_, i) => i).filter((i) => i !== player.color));
+  const taken = new Set(state.participants.filter((p) => !p.isBot).map((p) => p.color));
+  const colors = rng.shuffle(CHICK_COLORS.map((_, i) => i).filter((i) => !taken.has(i)));
+  let n = 0;
   for (const p of state.participants) {
     if (!p.isBot) continue;
-    p.color = colors[(p.id - 1) % colors.length]!;
+    p.color = colors[n++ % colors.length]!;
     p.accessory = rng.int(ACCESSORIES.length);
   }
+}
+
+/** A human seat is one a person holds; while that person is away, a bot plays it (`brain` is set). */
+export const isAway = (p: Participant): boolean => !p.isBot && p.brain !== null;
+
+const freshBrain = (state: WorldState, p: Participant): Brain =>
+  createBrain(createRng(((state.level.seed * 31 + p.id * 977 + state.tick) >>> 0) || 1));
+
+/** A person takes a bot seat in the lobby, or comes back to their own seat mid-match. */
+function join(state: WorldState, actor: Participant): SimEvent[] {
+  if (actor.isBot) {
+    if (state.phase !== 'lobby') return [];
+    actor.isBot = false;
+    // The first colour no other human wears.
+    const taken = new Set(state.participants.filter((p) => !p.isBot && p !== actor).map((p) => p.color));
+    actor.color = CHICK_COLORS.findIndex((_, i) => !taken.has(i));
+    dressBots(state);
+  } else if (!actor.brain) return [];
+  actor.brain = null;
+  actor.moveX = 0;
+  actor.moveZ = 0;
+  refreshVision(state, actor);
+  return [{ type: 'seatChanged', who: actor.id }, { type: 'looksChanged' }];
+}
+
+/** A person leaves: in the lobby the seat goes back to the bots; mid-match a bot plays it until they return. */
+function leave(state: WorldState, actor: Participant): SimEvent[] {
+  if (actor.isBot || actor.brain) return [];
+  const events: SimEvent[] = [];
+  if (actor.activeTask !== null) events.push(...applyCommand(state, actor.id, { type: 'cancelTask' }));
+  if (actor.watching) events.push(...stopWatching(actor));
+  actor.moveX = 0;
+  actor.moveZ = 0;
+  actor.seen = [];
+  actor.brain = freshBrain(state, actor);
+  if (state.phase === 'lobby') {
+    actor.isBot = true;
+    dressBots(state);
+    events.push({ type: 'looksChanged' });
+  }
+  events.push({ type: 'seatChanged', who: actor.id });
+  return events;
 }
 
 export function createWorld(
@@ -366,8 +420,7 @@ export function createWorld(
     nav: buildNav(level, buckets),
     phase: 'lobby',
     participants,
-    visible: new Uint8Array(level.size * level.size),
-    visibleVersion: 1,
+    sight: participants.map(() => ({ cells: new Uint8Array(level.size * level.size), version: 1 })),
     stations,
     tasks,
     boxes: [],
@@ -387,7 +440,7 @@ export function createWorld(
   me(state).accessory = clampIndex(look.accessory, ACCESSORIES.length);
   dressBots(state);
   assignCargoTargets(level, state.tasks, seed);
-  computeVisibility(level, me(state).x, me(state).z, state.visible);
+  refreshVision(state);
   return state;
 }
 
@@ -407,6 +460,8 @@ export function applyCommand(state: WorldState, who: number, command: Command): 
     }
     case 'setLook': {
       if (state.phase !== 'lobby' || actor.isBot) return [];
+      // Two humans never wear the same colour.
+      if (state.participants.some((p) => p !== actor && !p.isBot && p.color === clampIndex(command.color, CHICK_COLORS.length))) return [];
       actor.color = clampIndex(command.color, CHICK_COLORS.length);
       actor.accessory = clampIndex(command.accessory, ACCESSORIES.length);
       dressBots(state);
@@ -420,6 +475,10 @@ export function applyCommand(state: WorldState, who: number, command: Command): 
       for (const p of state.participants) p.visited = p.roomId === null ? [] : [p.roomId];
       return [{ type: 'started' }];
     }
+    case 'join':
+      return join(state, actor);
+    case 'leave':
+      return leave(state, actor);
     case 'interact':
       return state.phase === 'play' && actor.alive ? interact(state, actor) : [];
     case 'pack':
@@ -578,12 +637,15 @@ function completeTask(state: WorldState, actor: Participant, task: Task): SimEve
   return events;
 }
 
-/** The local player's sight: shorter while hiding under a rug. */
-function refreshVision(state: WorldState): void {
-  const self = me(state);
-  const radius = self.under !== null ? Math.min(CARPET_VISION, sightRadius(state)) : sightRadius(state);
-  computeVisibility(state.level, self.x, self.z, state.visible, radius);
-  state.visibleVersion++;
+/** Recomputes sight for one human seat, or for all of them; shorter while hiding under a rug. */
+function refreshVision(state: WorldState, only: Participant | null = null): void {
+  for (const self of only ? [only] : state.participants) {
+    if (self.isBot) continue;
+    const radius = self.under !== null ? Math.min(CARPET_VISION, sightRadius(state)) : sightRadius(state);
+    const sight = state.sight[self.id]!;
+    computeVisibility(state.level, self.x, self.z, sight.cells, radius);
+    sight.version++;
+  }
 }
 
 /** Dive under a rug or climb out of it; anyone who sees it will remember. */
@@ -597,7 +659,7 @@ function carpetAction(state: WorldState, actor: Participant, carpet: Carpet, act
   actor.moving = false;
   actor.carpetCooldown = CARPET_COOLDOWN;
   if (action !== 'crawl') carpet.lift = CARPET_DIVE;
-  if (actor.id === LOCAL_PLAYER) refreshVision(state);
+  refreshVision(state, actor);
   return [{ type: 'carpet', who: actor.id, carpet: carpet.id, action }];
 }
 
@@ -792,7 +854,7 @@ function stepParticipant(state: WorldState, p: Participant, dt: number, events: 
     }
 
     const crossed = Math.floor(fromX * 4) !== Math.floor(p.x * 4) || Math.floor(fromZ * 4) !== Math.floor(p.z * 4);
-    if (p.id === LOCAL_PLAYER && crossed) refreshVision(state);
+    if (crossed) refreshVision(state, p);
   } else {
     // Standing around in plain sight for a while is something bot chicks remember.
     if (p.idleTime < BOT_IDLE_NOTE && p.idleTime + dt >= BOT_IDLE_NOTE && p.alive && p.under === null && p.activeTask === null && !p.watching && state.phase === 'play') {

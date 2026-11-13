@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { BOX_SIZE } from '../config';
 import { getLang, t } from '../i18n';
 import type { Box } from '../sim/cargo';
-import type { WorldState } from '../sim/world';
+import { LOCAL_PLAYER, type WorldState } from '../sim/world';
 import { canvasTexture, withFog } from './kit';
 import { cardboardBox } from './props';
 
@@ -14,7 +14,7 @@ export interface BoxesView {
 
 /** Boxes outside the local player's sight are not drawn, like the chicks carrying them. */
 function isSeen(world: WorldState, x: number, z: number): boolean {
-  return world.visible[Math.floor(z) * world.level.size + Math.floor(x)] === 1;
+  return world.sight[LOCAL_PLAYER]!.cells[Math.floor(z) * world.level.size + Math.floor(x)] === 1;
 }
 
 const STICKER = new THREE.PlaneGeometry(BOX_SIZE * 0.8, BOX_SIZE * 0.36).rotateX(-Math.PI / 2);

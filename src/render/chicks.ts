@@ -42,7 +42,7 @@ export function createChicks(): ChicksView {
         if (!view) return;
         const cell = Math.floor(p.z) * n + Math.floor(p.x);
         // Packed chicks sit inside their box and are not drawn.
-        view.root.visible = p.alive && p.under === null && (p.id === LOCAL_PLAYER || world.visible[cell] === 1);
+        view.root.visible = p.alive && p.under === null && (p.id === LOCAL_PLAYER || world.sight[LOCAL_PLAYER]!.cells[cell] === 1);
         // The neck only reads up close; the player's own Goose always shows it to its player.
         const close = p.id === LOCAL_PLAYER || Math.hypot(p.x - self.x, p.z - self.z) <= TELL_VISIBLE_RANGE;
         const neck = p.tell > 0 && close ? Math.sin((p.tell / TELL_TIME) * Math.PI) : 0;

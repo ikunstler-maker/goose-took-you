@@ -55,7 +55,7 @@ export interface Task {
   id: number;
   kind: TaskKind;
   station: number;
-  /** Participant the task belongs to; 0 is the local player until roles arrive. */
+  /** Participant (seat) the task belongs to. */
   owner: number;
   done: boolean;
   /** Cargo only: room id the box must reach. */
