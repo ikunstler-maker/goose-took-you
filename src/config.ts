@@ -254,18 +254,18 @@ export const CARPET_HIDE_LIMIT = 12;
 
 // --- Sabotages (stage 5) ---
 /** «Перегрів рендер-ферми»: seconds to fix both fan points before the Goose wins. */
-export const OVERHEAT_TIME = 60;
+export const OVERHEAT_TIME = 70;
 /** Sight radius of everyone while the render farm overheats, metres. */
 export const OVERHEAT_VISION = 5;
 /** «Терміновий дзвінок Модуса»: seconds to collect the NDA signatures, and how many different signers. */
-export const CALL_TIME = 45;
+export const CALL_TIME = 55;
 export const CALL_SIGNERS = 2;
 /** Pause before the first sabotage, after a fixed one and after every meeting, seconds. */
 export const SABOTAGE_COOLDOWN = 40;
 /** The Goose's neck stretches this many times more often while a sabotage runs. */
 export const TELL_SABOTAGE_RATE = 3;
 /** Share of bot chicks that drop everything and go to fix a sabotage. */
-export const BOT_FIX_CHANCE = 0.32;
+export const BOT_FIX_CHANCE = 0.5;
 /** Bot Goose: waits this long after the cooldown before it starts a sabotage, seconds. */
 export const GOOSE_SABOTAGE_MIN = 5;
 export const GOOSE_SABOTAGE_MAX = 20;
