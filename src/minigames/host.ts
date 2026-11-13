@@ -35,7 +35,12 @@ export function createMinigameHost(handlers: { onWin(): void; onCancel(): void; 
   const title = document.createElement('h2');
   const hint = document.createElement('span');
   hint.className = 'mg-hint';
-  header.append(title, hint);
+  // Phones have no Esc: the cross does the same.
+  const cross = document.createElement('button');
+  cross.type = 'button';
+  cross.className = 'mg-close';
+  cross.textContent = '✕';
+  header.append(title, hint, cross);
   const body = document.createElement('div');
   body.className = 'mg-body';
   const banner = document.createElement('div');
@@ -50,6 +55,8 @@ export function createMinigameHost(handlers: { onWin(): void; onCancel(): void; 
     title.textContent = t(`task.${kind}`);
     hint.textContent = t('minigame.close');
     banner.textContent = t('minigame.done');
+    cross.title = t('minigame.closeTouch');
+    cross.setAttribute('aria-label', t('minigame.closeTouch'));
     view?.draw();
   };
 
@@ -62,12 +69,17 @@ export function createMinigameHost(handlers: { onWin(): void; onCancel(): void; 
     overlay.hidden = true;
   };
 
+  const cancel = (): void => {
+    if (!view || doneIn >= 0) return;
+    close();
+    handlers.onCancel();
+  };
   window.addEventListener('keydown', (event) => {
     if (event.code !== 'Escape' || !view || doneIn >= 0) return;
     event.preventDefault();
-    close();
-    handlers.onCancel();
+    cancel();
   });
+  cross.addEventListener('click', cancel);
 
   overlay.hidden = true;
   return {

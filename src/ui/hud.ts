@@ -3,6 +3,7 @@ import type { RoomType } from '../sim/prefabs';
 import type { Task } from '../sim/tasks';
 import { fixesNeeded } from '../sim/sabotage';
 import { LOCAL_PLAYER, me, progress, type WorldState } from '../sim/world';
+import { isTouch, keyName } from './touch';
 
 export interface Hud {
   setRoom(type: RoomType | null): void;
@@ -14,6 +15,8 @@ export interface Hud {
   /** Sabotage banner with its countdown and the Goose's sabotage line; cheap to call every frame. */
   setAlarm(world: WorldState): void;
 }
+
+const STALE = '\u0000';
 
 const el = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
@@ -47,11 +50,14 @@ export function createHud(handlers: { onNewOffice(): void; onLangChange(lang: La
     progressLabel.textContent = bar >= 1 ? t('hud.allDone') : t('hud.progress');
     progressFill.style.width = `${bar * 100}%`;
     const goose = me(world).role === 'goose' && world.phase !== 'lobby';
-    tasksTitle.textContent = goose ? t('hud.tasksFake') : t('hud.tasks');
+    const own = tasks.filter((task) => task.owner === LOCAL_PLAYER);
+    tasksTitle.textContent = t('hud.tasksCount', {
+      title: goose ? t('hud.tasksFake') : t('hud.tasks'),
+      done: own.filter((task) => task.done).length,
+      count: own.length,
+    });
     el('controls').textContent = goose ? t('hud.controlsGoose') : t('hud.controls');
-    const items = tasks
-      .filter((task) => task.owner === LOCAL_PLAYER)
-      .map((task) => {
+    const items = own.map((task) => {
         const li = document.createElement('li');
         const roomType = level.rooms[stations[task.station]!.room]!.type;
         li.textContent =
@@ -74,12 +80,12 @@ export function createHud(handlers: { onNewOffice(): void; onLangChange(lang: La
   const promptText = (w: WorldState): string => {
     const self = me(w);
     if (w.phase !== 'play' || self.activeTask !== null || !self.alive) return '';
-    if (self.under !== null) return t('hud.carpetUnder', { key: 'E' });
+    if (self.under !== null) return t(isTouch() ? 'hud.carpetUnderTouch' : 'hud.carpetUnder', { key: keyName('interact') });
     const lines: string[] = [];
     if (self.canPack !== null) {
-      lines.push(self.packCooldown > 0 ? t('hud.packWait', { seconds: Math.ceil(self.packCooldown) }) : t('hud.pack', { key: 'Q' }));
+      lines.push(self.packCooldown > 0 ? t('hud.packWait', { seconds: Math.ceil(self.packCooldown) }) : t('hud.pack', { key: keyName('pack') }));
     }
-    if (self.canReport !== null) lines.push(t('hud.report', { key: 'R' }));
+    if (self.canReport !== null) lines.push(t('hud.report', { key: keyName('report') }));
     const main = mainPrompt(w);
     if (main) lines.unshift(main);
     return lines.join(' · ');
@@ -88,12 +94,12 @@ export function createHud(handlers: { onNewOffice(): void; onLangChange(lang: La
   const mainPrompt = (w: WorldState): string => {
     const self = me(w);
     const p = self.prompt;
-    if (p?.kind === 'fix' && w.sabotage) return t(`hud.fix.${w.sabotage.kind}`, { key: 'E' });
-    if (p?.kind === 'task') return t('hud.interact', { key: 'E', task: t(`task.${w.tasks[p.task]!.kind}`) });
-    if (p?.kind === 'pickup') return t('hud.pickup', { key: 'E' });
-    if (p?.kind === 'deliver') return t('hud.deliver', { key: 'E' });
-    if (p?.kind === 'button') return t('hud.button', { key: 'E' });
-    if (p?.kind === 'carpet') return t('hud.carpetIn', { key: 'E' });
+    if (p?.kind === 'fix' && w.sabotage) return t(`hud.fix.${w.sabotage.kind}`, { key: keyName('interact') });
+    if (p?.kind === 'task') return t('hud.interact', { key: keyName('interact'), task: t(`task.${w.tasks[p.task]!.kind}`) });
+    if (p?.kind === 'pickup') return t('hud.pickup', { key: keyName('interact') });
+    if (p?.kind === 'deliver') return t('hud.deliver', { key: keyName('interact') });
+    if (p?.kind === 'button') return t('hud.button', { key: keyName('interact') });
+    if (p?.kind === 'carpet') return t('hud.carpetIn', { key: keyName('interact') });
     if (self.carrying !== null) {
       const box = w.boxes.find((b) => b.id === self.carrying);
       return box ? t('hud.carrying', { hint: cargoHint(w.tasks[box.task]!) }) : '';
@@ -140,13 +146,18 @@ export function createHud(handlers: { onNewOffice(): void; onLangChange(lang: La
     newOffice.textContent = t('hud.newOffice');
     roomName.textContent = room ? t(`room.${room}`) : t('room.corridor');
     drawTasks();
-    alarmShown = '';
-    sabotageShown = '';
+    // A value no text can equal, so the next draw always repaints (and hides a stale banner).
+    alarmShown = STALE;
+    sabotageShown = STALE;
     if (world) drawAlarm(world);
     for (const button of langButtons) {
       button.setAttribute('aria-pressed', String(button.dataset.lang === getLang()));
     }
   };
+
+  // On a phone the task list folds into its title; a tap opens it.
+  const tasksPanel = el('tasks');
+  tasksTitle.addEventListener('click', () => tasksPanel.classList.toggle('open'));
 
   newOffice.addEventListener('click', () => {
     newOffice.blur();

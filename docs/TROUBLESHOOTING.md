@@ -136,4 +136,18 @@ Entry format (≤8 lines):
 - Verify: the file holds one row per seed.
 - Seen: 2026-11-12
 
+### HUD banner stays visible after its state is gone
+- Symptom: the red sabotage banner hangs on screen after a meeting interrupted the sabotage.
+- Root cause: `refresh()` reset the cached text to `''`; the next draw also produced `''`, saw no change and skipped hiding.
+- Fix: reset caches to a sentinel no text can equal (`STALE` in `src/ui/hud.ts`).
+- Verify: start a sabotage, call a meeting, the banner is gone during and after it.
+- Seen: 2026-11-13
+
+### Phone emulation in Playwright
+- Symptom: touch UI does not appear, or screenshots of both orientations exceed the 2-minute command limit.
+- Root cause: touch mode needs `hasTouch: true, isMobile: true` (media `hover: none, pointer: coarse`); SwiftShader is slow.
+- Fix: one orientation per run; real multi-touch via CDP `Input.dispatchTouchEvent`; `__goose.advance(s)` to skip time.
+- Verify: `html.touch` class is set and `#touch .act` buttons show in play.
+- Seen: 2026-11-13
+
 ## CI

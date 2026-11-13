@@ -112,8 +112,9 @@ export function createModusView(ctx: MinigameContext): MinigameView {
         el = makeSticker(sticker.id, sticker.tilt);
         ctx.sound('sticker');
         elements.set(sticker.id, el);
-        el.style.left = `calc(${sticker.x * 100}% - 80px)`;
-        el.style.top = `calc(${sticker.y * 100}% - 34px)`;
+        // Clamped so a note never hangs over the edge of a narrow phone board.
+        el.style.left = `clamp(4px, calc(${sticker.x * 100}% - 80px), calc(100% - 164px))`;
+        el.style.top = `clamp(4px, calc(${sticker.y * 100}% - 34px), calc(100% - 72px))`;
       }
       el.firstElementChild!.textContent = t(`minigame.modus.note${sticker.note}` as I18nKey);
     }

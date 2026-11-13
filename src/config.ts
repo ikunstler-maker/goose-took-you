@@ -281,3 +281,15 @@ export const HEARING_RANGE = 9;
 /** Slanted light sheets per window pane, and how opaque each is at the glass. */
 export const SUN_RAY_LAYERS = 3;
 export const SUN_RAY_OPACITY = 0.3;
+
+// --- Touch screens ---
+/** Thumb stick: travel in CSS pixels, rest zone and the push that counts as a flick (shares of the travel). */
+export const STICK_RADIUS = 52;
+export const STICK_DEADZONE = 0.22;
+export const STICK_FLICK = 0.6;
+/** Phones render at most this many device pixels per CSS pixel, with a smaller sun shadow map. */
+export const TOUCH_PIXEL_RATIO = 1.5;
+export const TOUCH_SHADOW_MAP = 2048;
+export const SHADOW_MAP = 4096;
+/** On a tall screen the camera keeps at least this share of its zoom as half-width, so the view is not a slit. */
+export const PORTRAIT_FIT = 0.85;
