@@ -27,7 +27,7 @@ Browser 3D isometric social-deduction game: chibi chicks vs an undercover goose 
 - Gambling theme is satire: no real-money mechanics, no outbound gambling links. "Censored" gags are abstract pixel mosaics only.
 
 ## Architecture
-- Stack: Vite + TypeScript (strict) + Three.js, Vitest. Static site, no backend in v1. Desktop only (keyboard + mouse).
+- Stack: Vite + TypeScript (strict) + Three.js, Vitest. Static site, no backend in v1. Desktop (keyboard + mouse) and phones (touch, portrait and landscape).
 - Invariants:
   1. `src/sim/` is pure TS: no Three.js, DOM or `Math.random`; seeded RNG only. Rendering reads sim state, never owns it. Vision (what a player sees) is sim state.
   2. All gameplay changes go through sim commands/events; bots and a future network transport use the player's path.

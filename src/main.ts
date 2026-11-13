@@ -17,6 +17,7 @@ import { createMatchScreens } from './ui/match';
 import { createMeetingView } from './ui/meeting';
 import { loadSettings, saveSettings } from './ui/settings';
 import { createSoundControls } from './ui/soundControls';
+import { createTouchControls, isTouch } from './ui/touch';
 
 const settings = loadSettings();
 setLang(settings.lang);
@@ -37,7 +38,8 @@ document.addEventListener('click', (event) => {
   if (event.target instanceof Element && event.target.closest('button')) sound.play('click');
 });
 
-const stage = createStage(document.getElementById('game') as HTMLCanvasElement);
+const canvas = document.getElementById('game') as HTMLCanvasElement;
+const stage = createStage(canvas);
 const chicks = createChicks();
 stage.scene.add(chicks.root);
 const boxes = createBoxes();
@@ -99,6 +101,7 @@ const hud = createHud({
     screens.relabel(world);
     meeting.relabel();
     soundControls.relabel();
+    touch.relabel();
   },
 });
 
@@ -216,7 +219,7 @@ function handle(events: SimEvent[]): void {
     }
     if (event.type === 'meetingStarted') {
       minigames.close();
-      held.clear();
+      dropInput();
       hud.setTasks(world);
       markers?.refresh(world);
     }
@@ -263,7 +266,7 @@ function handle(events: SimEvent[]): void {
       case 'gameOver':
         minigames.close();
         meeting.hide();
-        held.clear();
+        dropInput();
         screens.showOver(world);
         break;
       case 'taskClosed':
@@ -342,9 +345,12 @@ function crawlToward([right, up]: [number, number]): void {
   if (to !== null) send({ type: 'crawl', to });
 }
 
+/** Thumb stick direction on a touch screen, screen-relative; adds to the keys. */
+const stick: [number, number] = [0, 0];
+
 function sendMove(): void {
-  let right = 0;
-  let up = 0;
+  let right = stick[0];
+  let up = stick[1];
   for (const code of held) {
     const dir = KEYS[code];
     if (dir) {
@@ -354,6 +360,37 @@ function sendMove(): void {
   }
   // Camera yaw is 45°: screen-right is (+x, -z), screen-up is (-x, -z).
   send({ type: 'move', x: right - up, z: -right - up });
+}
+
+const touch = createTouchControls(canvas, {
+  onMove: (right, up) => {
+    stick[0] = right;
+    stick[1] = up;
+    if (me(world).under === null) sendMove();
+  },
+  // Under a rug a push of the stick picks the linked rug that lies that way.
+  onFlick: (right, up) => {
+    if (me(world).under !== null) crawlToward([right, up]);
+  },
+  onAction: (action) => {
+    if (minigames.isOpen()) return;
+    if (action === 'overheat' || action === 'call') send({ type: 'sabotage', kind: action });
+    else send({ type: action });
+    sound.play('click');
+  },
+  onZoom: (factor) => stage.zoomBy(factor),
+  onEnable: () => {
+    stage.setTouch(true);
+    hud.setTasks(world);
+  },
+});
+stage.setTouch(isTouch());
+
+function dropInput(): void {
+  held.clear();
+  stick[0] = 0;
+  stick[1] = 0;
+  touch.reset();
 }
 
 window.addEventListener('keydown', (event) => {
@@ -413,6 +450,7 @@ function frame(now: number): void {
 
   if (world.phase === 'meeting') meeting.update(world);
   hud.setAlarm(world);
+  touch.update(world);
   stage.setGloom(world.sabotage?.kind === 'overheat' && world.phase === 'play' ? 1 : 0, dt);
 
   ambience(dt);

@@ -7,6 +7,10 @@ import {
   CAMERA_ZOOM_MAX,
   CAMERA_ZOOM_MIN,
   GLOOM_FADE,
+  PORTRAIT_FIT,
+  SHADOW_MAP,
+  TOUCH_PIXEL_RATIO,
+  TOUCH_SHADOW_MAP,
   GLOOM_SKY,
   GLOOM_SKY_LIGHT,
   GLOOM_SUN_LIGHT,
@@ -27,6 +31,8 @@ export interface Stage {
   refreshShadows(): void;
   /** Eases the lights towards day (0) or the overheat blackout (1). */
   setGloom(target: number, dt: number): void;
+  /** Lighter rendering for phones: fewer pixels, a smaller shadow map. */
+  setTouch(on: boolean): void;
   render(): void;
 }
 
@@ -50,7 +56,7 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
   let gloom = 0;
   const sun = new THREE.DirectionalLight(0xfff0cf, SUN_LIGHT);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(4096, 4096);
+  sun.shadow.mapSize.set(SHADOW_MAP, SHADOW_MAP);
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.03;
   scene.add(sun, sun.target);
@@ -66,10 +72,12 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
 
   const applyCamera = (): void => {
     const aspect = window.innerWidth / window.innerHeight;
-    camera.left = -zoom * aspect;
-    camera.right = zoom * aspect;
-    camera.top = zoom;
-    camera.bottom = -zoom;
+    // A tall phone screen: keep the width and show more above and below instead.
+    const half = aspect >= PORTRAIT_FIT ? zoom : (zoom * PORTRAIT_FIT) / aspect;
+    camera.left = -half * aspect;
+    camera.right = half * aspect;
+    camera.top = half;
+    camera.bottom = -half;
     camera.updateProjectionMatrix();
     camera.position.copy(target).add(offset);
     camera.lookAt(target);
@@ -122,6 +130,17 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
       sky.intensity = SKY_LIGHT + (GLOOM_SKY_LIGHT - SKY_LIGHT) * gloom;
       sun.intensity = SUN_LIGHT + (GLOOM_SUN_LIGHT - SUN_LIGHT) * gloom;
       (scene.background as THREE.Color).copy(dayColor).lerp(gloomColor, gloom);
+    },
+    setTouch(on) {
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, on ? TOUCH_PIXEL_RATIO : 2));
+      const size = on ? TOUCH_SHADOW_MAP : SHADOW_MAP;
+      if (sun.shadow.mapSize.x !== size) {
+        sun.shadow.mapSize.set(size, size);
+        sun.shadow.map?.dispose();
+        sun.shadow.map = null;
+        renderer.shadowMap.needsUpdate = true;
+      }
+      resize();
     },
     refreshShadows() {
       renderer.shadowMap.needsUpdate = true;
