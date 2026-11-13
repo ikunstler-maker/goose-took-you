@@ -333,3 +333,9 @@ export const CAMERA_ROOMS = ['lobby', 'meeting', 'motion', 'cargo'] as const;
 export const CAMERA_RADIUS = 16;
 /** Seconds a camera tile flashes after it caught a pack. */
 export const CAMERA_ALERT_TIME = 4;
+/** Bot memory for meeting lines: seconds of standing idle in plain sight that a chick remembers. */
+export const BOT_IDLE_NOTE = 8;
+/** Chance a bot votes for someone it only saw idling. */
+export const BOT_IDLE_VOTE_CHANCE = 0.25;
+/** Most recent sightings a bot keeps between meetings. */
+export const BOT_NOTES_MAX = 4;

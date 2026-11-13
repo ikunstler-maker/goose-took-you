@@ -47,6 +47,7 @@ import { cellCentre, findPath, fitsIn, nearestFree, type NavGrid } from './nav';
 import { createRng, type Rng } from './rng';
 import { WINDOW_TASKS } from './tasks';
 import { meetingTable, noteBox, type Suspicion } from './meeting';
+import type { Note } from './notes';
 import { canSee } from './vision';
 import { openFixPoints, propDistance, SABOTAGE_KINDS, sightRadius } from './sabotage';
 import type { Command, Participant, SimEvent, Thought, WorldState } from './world';
@@ -125,6 +126,8 @@ export interface Brain {
   sabotageIn: number;
   /** Chick only: what it saw that points at someone; brought up at the next meeting. */
   suspicion: Suspicion | null;
+  /** Sightings since the last meeting, newest first; turned into meeting lines. */
+  notes: Note[];
 }
 
 export function createBrain(rng: Rng): Brain {
@@ -155,6 +158,7 @@ export function createBrain(rng: Rng): Brain {
     spooked: false,
     bait: false,
     suspicion: null,
+    notes: [],
     // Rolled on first use, so the brains' start-up rolls stay as they were.
     sabotageIn: -1,
     escape: null,

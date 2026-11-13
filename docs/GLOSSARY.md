@@ -89,3 +89,5 @@
 | «Занос на 777» | мініігра: зупинити барабани на 7 | `TaskKind: 'slot'`, `src/minigames/slot/` |
 | «Сканер бейджа» | мініігра: рівно провести бейдж | `TaskKind: 'badge'`, `src/minigames/badge/` |
 | Камери спостереження | екран 2×2 за пультом в Охороні | `src/sim/cameras.ts`, `src/ui/cameras.ts`, `Participant.watching`, `CAMERA_*`, команда `stopWatching` |
+| Спостереження бота | що бот-курча бачило між зборами: завдання, лагодження, бездіяльність | `Note`, `Brain.notes`, `src/sim/notes.ts`, `BOT_IDLE_NOTE`, `BOT_NOTES_MAX` |
+| Заступництво | бот захищає звинуваченого, якого бачив за роботою | `ChatKind: 'vouch'` |
