@@ -652,15 +652,13 @@ const BUILDERS: Record<PropKind, (variant: number) => THREE.Group> = {
     );
   },
 
-  // Turnstile reader by the door: a post with a card slot and a barrier arm.
+  // Turnstile reader by the door: a post with a card slot. Its barrier arm moves, so it is drawn apart (render/badges.ts).
   badgeScanner: () =>
     group(
       box(0.5, 1.05, 0.5, mat(0x5b6577), 0, 0.525, 0),
       box(0.56, 0.08, 0.56, DARK, 0, 1.09, 0),
       box(0.3, 0.2, 0.04, DARK, 0, 0.85, 0.26, false),
       box(0.22, 0.04, 0.02, glow(0x4dff88), 0, 0.92, 0.285, false),
-      box(0.06, 0.06, 0.9, mat(0xe5433d), 0, 0.8, 0.7),
-      box(0.06, 0.06, 0.9, WHITE, 0, 0.6, 0.7),
     ),
 
   // The Giant Green Button: a chunky pedestal with a glowing dome. The dome is tagged so it can sink when pressed.

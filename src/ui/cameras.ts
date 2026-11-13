@@ -100,6 +100,12 @@ export function createCameraScreen(onClose: () => void): CameraScreen {
           g.fillRect(x * scale, z * scale, scale + 0.5, scale + 0.5);
         }
       }
+      // Furniture: darker blocks, so a room on screen reads as that room.
+      for (const prop of lv.props) {
+        if (Math.abs(prop.x - spot.x) > VIEW / 2 + prop.w || Math.abs(prop.z - spot.z) > VIEW / 2 + prop.d) continue;
+        g.fillStyle = cameraSees(lv, spot, prop.x, prop.z) ? (prop.solid ? '#31443a' : '#40584c') : '#1b2520';
+        g.fillRect((prop.x - prop.w / 2 - ox) * scale + 1, (prop.z - prop.d / 2 - oz) * scale + 1, prop.w * scale - 2, prop.d * scale - 2);
+      }
       const view = cameraView(lv, spot, world.participants, world.boxes);
       for (const id of view.boxes) {
         const box = world.boxes.find((b) => b.id === id)!;
