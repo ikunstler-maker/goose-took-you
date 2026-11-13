@@ -325,3 +325,6 @@ export const BADGE_MAX_TIME = 1.2;
 export const BADGE_TRACK_DONE = 0.95;
 /** «Занос на 777»: seconds a missed reel shows its symbol before spinning again. */
 export const MINIGAME_SLOT_MISS_PAUSE = 0.6;
+/** Minimap side in CSS pixels: small and expanded (click or tap toggles). */
+export const MINIMAP_SIZE = 150;
+export const MINIMAP_SIZE_BIG = 320;

@@ -1741,3 +1741,40 @@ html.touch .lines-tools {
 .mg-big-button.on {
   background: #7be05a;
 }
+
+/* Minimap (stage 6) */
+#minimap {
+  position: fixed;
+  top: 76px;
+  right: 12px;
+  width: var(--size);
+  height: var(--size);
+  padding: 6px;
+  border-radius: 14px;
+  background: rgba(47, 51, 64, 0.82);
+  box-shadow: 0 4px 14px rgba(90, 60, 10, 0.18);
+  cursor: zoom-in;
+  box-sizing: content-box;
+}
+
+#minimap.big {
+  cursor: zoom-out;
+}
+
+#minimap canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+@media (orientation: portrait) {
+  #minimap {
+    --size: 96px !important;
+    top: auto;
+    bottom: 180px;
+  }
+
+  #minimap.big {
+    --size: min(80vw, 320px) !important;
+  }
+}

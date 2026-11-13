@@ -156,3 +156,21 @@ describe('cargo', () => {
     expect(slips / runs).toBeLessThan(0.15);
   });
 });
+
+describe('visited rooms', () => {
+  it('starts with the lobby and remembers each room once', () => {
+    const state = createWorld(42);
+    const self = me(state);
+    expect(self.visited).toEqual([self.roomId]);
+    const other = state.level.rooms.find((r) => r.id !== self.roomId)!;
+    for (let k = 0; k < 2; k++) {
+      self.x = other.cx;
+      self.z = other.cz;
+      step(state, TICK);
+      self.x = state.level.spawn.x;
+      self.z = state.level.spawn.z;
+      step(state, TICK);
+    }
+    expect(self.visited).toEqual([state.level.rooms.find((r) => r.type === 'lobby')!.id, other.id]);
+  });
+});

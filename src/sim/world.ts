@@ -130,6 +130,8 @@ export interface Participant {
   carrying: number | null;
   /** Room the participant stands in, or null in a corridor. */
   roomId: number | null;
+  /** Rooms this participant has walked into this match, in order; drives the minimap. */
+  visited: number[];
   prompt: Prompt | null;
   /** Task whose mini-game is open; the chick stands still meanwhile, the office does not. */
   activeTask: number | null;
@@ -319,6 +321,7 @@ export function createWorld(
     bumpCooldown: 0,
     carrying: null,
     roomId: roomAt(level, spot.x, spot.z)?.id ?? null,
+    visited: [],
     prompt: null,
     activeTask: null,
     brain: id === LOCAL_PLAYER ? null : createBrain(botRng),
@@ -384,6 +387,8 @@ export function applyCommand(state: WorldState, who: number, command: Command): 
       if (state.phase !== 'lobby' || actor.isBot) return [];
       state.phase = 'play';
       dealRoles(state);
+      // Everyone starts in the lobby: that room is known from the first second.
+      for (const p of state.participants) p.visited = p.roomId === null ? [] : [p.roomId];
       return [{ type: 'started' }];
     }
     case 'interact':
@@ -715,6 +720,7 @@ function stepParticipant(state: WorldState, p: Participant, dt: number, events: 
   const roomId = roomAt(level, p.x, p.z)?.id ?? null;
   if (roomId !== p.roomId) {
     p.roomId = roomId;
+    if (roomId !== null && !p.visited.includes(roomId)) p.visited.push(roomId);
     events.push({ type: 'roomChanged', who: p.id, roomId });
     if (roomId !== null && p.emotion !== 'dizzy') {
       p.emotion = 'surprised';
