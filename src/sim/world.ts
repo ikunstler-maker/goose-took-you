@@ -829,6 +829,21 @@ function packTarget(state: WorldState, goose: Participant): number | null {
 }
 
 /** Moves one participant and updates its face, box and prompt. */
+/**
+ * One step of walking in a unit direction; true when something was in the way.
+ * Axes are resolved separately so the chick slides along walls. The browser
+ * uses the same step to move its own chick ahead of the server's answer.
+ */
+export function walk(level: Level, buckets: Buckets, p: { x: number; z: number }, dirX: number, dirZ: number, dt: number): boolean {
+  const nextX = p.x + dirX * PLAYER_SPEED * dt;
+  const hitX = dirX !== 0 && blocked(level, buckets, nextX, p.z, PLAYER_RADIUS);
+  if (!hitX) p.x = nextX;
+  const nextZ = p.z + dirZ * PLAYER_SPEED * dt;
+  const hitZ = dirZ !== 0 && blocked(level, buckets, p.x, nextZ, PLAYER_RADIUS);
+  if (!hitZ) p.z = nextZ;
+  return hitX || hitZ;
+}
+
 function stepParticipant(state: WorldState, p: Participant, dt: number, events: SimEvent[]): void {
   const { level, buckets } = state;
   p.moving = state.phase === 'play' && p.alive && p.activeTask === null && !p.watching && p.under === null && (p.moveX !== 0 || p.moveZ !== 0);
@@ -843,15 +858,9 @@ function stepParticipant(state: WorldState, p: Participant, dt: number, events: 
     p.idleTime = 0;
     const fromX = p.x;
     const fromZ = p.z;
-    // Axes are resolved separately so the chick slides along walls.
-    const nextX = p.x + p.moveX * PLAYER_SPEED * dt;
-    const hitX = p.moveX !== 0 && blocked(level, buckets, nextX, p.z, PLAYER_RADIUS);
-    if (!hitX) p.x = nextX;
-    const nextZ = p.z + p.moveZ * PLAYER_SPEED * dt;
-    const hitZ = p.moveZ !== 0 && blocked(level, buckets, p.x, nextZ, PLAYER_RADIUS);
-    if (!hitZ) p.z = nextZ;
+    const hit = walk(level, buckets, p, p.moveX, p.moveZ, dt);
 
-    if (hitX || hitZ) {
+    if (hit) {
       // Running into something at speed leaves the chick dizzy.
       if (p.runTime > 0.3 && p.bumpCooldown === 0) {
         p.emotion = 'dizzy';

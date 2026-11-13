@@ -12,7 +12,7 @@ import { createStage } from './render/stage';
 import { setLang, t, type I18nKey } from './i18n';
 import { applyCommand, createWorld, LOCAL_PLAYER, me, setLocalSeat, step, type Command, type Role, type SimEvent, type WorldState } from './sim/world';
 import { connect, serverUrl, type Online } from './net/client';
-import { applyView, createMirror, glide, type Targets } from './net/mirror';
+import { applyView, createMirror, glide, type OwnInput, type Targets } from './net/mirror';
 import { isCode, normalizeCode, type ClientMessage, type PlayerCommand, type WireView } from './net/protocol';
 import { linkToward } from './sim/carpets';
 import { createHud } from './ui/hud';
@@ -362,6 +362,12 @@ function handle(events: SimEvent[]): void {
 }
 
 function send(command: PlayerCommand): void {
+  if (online && command.type === 'move') {
+    // The own chick starts walking at once; the server confirms a moment later.
+    const length = Math.hypot(command.x, command.z);
+    ownInput.x = length > 1e-6 ? command.x / length : 0;
+    ownInput.z = length > 1e-6 ? command.z / length : 0;
+  }
   if (online) online.send(command);
   else handle(applyCommand(world, LOCAL_PLAYER, command));
 }
@@ -371,6 +377,7 @@ let online: Online | null = null;
 /** True until the first snapshot of a room (or of its next match) has been drawn. */
 let freshRoom = false;
 const targets: Targets = new Map();
+const ownInput: OwnInput = { x: 0, z: 0, still: 0 };
 const onlineInfo: OnlineInfo = { available: serverUrl() !== '', status: 'off', code: '', players: 0, host: false, taken: [], error: null };
 let onlineSeat = -1;
 
@@ -431,6 +438,8 @@ function showState(view: WireView, changed: Partial<WireView>, events: SimEvent[
     meeting.hide();
     screens.hideAll();
     targets.clear();
+    ownInput.x = 0;
+    ownInput.z = 0;
     world = createMirror(view);
     // A new copy has seen nothing yet: every part of the snapshot counts as new.
     applyView(world, view, view, targets);
@@ -445,7 +454,7 @@ function showState(view: WireView, changed: Partial<WireView>, events: SimEvent[
     else lobby.hide();
     if (view.phase === 'over') screens.showOver(world);
     else if (view.phase !== 'lobby' && !me(world).alive) screens.showPacked(world);
-  } else applyView(world, view, changed, targets);
+  } else applyView(world, view, changed, targets, ownInput);
 
   if (view.phase === 'lobby' && (fresh || changed.seats)) {
     const taken = view.seats.filter((seat) => seat.human && seat.id !== view.you).map((seat) => seat.color).sort();
@@ -551,6 +560,8 @@ const touch = createTouchControls(canvas, {
 stage.setTouch(isTouch());
 
 function dropInput(): void {
+  ownInput.x = 0;
+  ownInput.z = 0;
   held.clear();
   stick[0] = 0;
   stick[1] = 0;
@@ -624,7 +635,7 @@ function frame(now: number): void {
     if (!online && world.tick % 15 === 0 && (me(world).canPack !== null || world.tasks.some((task) => task.owner === LOCAL_PLAYER && task.rush > 0))) hud.setTasks(world);
     accumulator -= TICK;
   }
-  if (online) glide(world, targets, dt);
+  if (online) glide(world, targets, dt, LOCAL_PLAYER, ownInput);
 
   if (world.phase === 'meeting') meeting.update(world);
   hud.setAlarm(world);
