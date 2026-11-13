@@ -508,3 +508,9 @@ export const ATTN_BEHIND_CHANCE = 0.1;
 export const ATTN_BUSY = 0.6;
 /** Something that stays in view (a box, a feather) gets a fresh look this often, seconds. */
 export const ATTN_GLANCE = 0.5;
+
+/** Emergency light during «Перегрів»: pulses per second (kept slow on purpose), how red it turns and how much brighter at the peak. */
+export const EMERGENCY_RATE = 0.8;
+export const EMERGENCY_TINT = 0.7;
+export const EMERGENCY_BOOST = 0.35;
+

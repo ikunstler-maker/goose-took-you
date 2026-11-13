@@ -1,6 +1,7 @@
 import { ALARM_EVERY, HEARING_RANGE, HONK_HEAR_RANGE, KNOCK_EVERY, MODEM_HEAR_RANGE, STEP_EVERY, TICK, VANISH_TIME } from './config';
 import { createSound, type SoundName } from './audio/sound';
 import { createMinigameHost } from './minigames/host';
+import { createBadges, type BadgesView } from './render/badges';
 import { createBoxes } from './render/boxes';
 import { createBroadcast, type BroadcastView } from './render/broadcast';
 import { createConfetti } from './render/confetti';
@@ -61,6 +62,7 @@ let office: OfficeView | null = null;
 let markers: TaskMarkers | null = null;
 let broadcast: BroadcastView | null = null;
 let carpets: CarpetsView | null = null;
+let badges: BadgesView | null = null;
 
 function seedFromUrl(): number | null {
   const raw = new URLSearchParams(window.location.search).get('seed');
@@ -99,6 +101,12 @@ function rebuildOffice(): void {
   }
   carpets = createCarpets(world);
   stage.scene.add(carpets.root);
+  if (badges) {
+    stage.scene.remove(badges.root);
+    badges.dispose();
+  }
+  badges = createBadges(world);
+  stage.scene.add(badges.root);
   stage.fitSun(world.level.size);
 }
 
@@ -263,6 +271,9 @@ function handle(events: SimEvent[]): void {
     hear(event);
     // Anyone's finished task moves the shared bar.
     if (event.type === 'taskDone') {
+      // A swiped card lifts the barrier of that turnstile.
+      const done = world.tasks[event.taskId];
+      if (done?.kind === 'badge') badges?.swing(world.stations[done.station]!.prop);
       hud.setTasks(world);
       markers?.refresh(world);
     }
@@ -703,6 +714,7 @@ function frame(now: number): void {
   cameras.update(world, dt);
   touch.update(world);
   stage.setGloom(world.sabotage?.kind === 'overheat' && world.phase === 'play' ? 1 : 0, dt);
+  stage.pulseEmergency(now / 1000);
 
   ambience(dt);
   const time = now / 1000;
@@ -715,6 +727,7 @@ function frame(now: number): void {
   broadcast?.update(world.broadcast, time);
   confetti.update(dt);
   carpets?.update(world, time, dt);
+  badges?.update(world, time, dt);
   stage.follow(player.x, player.z, dt);
   stage.render();
   requestAnimationFrame(frame);
