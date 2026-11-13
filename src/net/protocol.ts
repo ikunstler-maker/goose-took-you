@@ -1,6 +1,9 @@
 import type { PlayerView } from '../sim/view';
 import type { Command, SimEvent } from '../sim/world';
 
+/** Bumped whenever the messages below change shape; a browser and a server of different versions do not play together. */
+export const PROTOCOL = 2;
+
 /** Room codes: five letters, without the look-alikes (no I, L, O). */
 export const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ';
 export const CODE_LENGTH = 5;
@@ -28,11 +31,15 @@ export type ClientMessage =
   | { t: 'again' };
 
 /** Why the server said no; the browser shows `online.error.<reason>`. */
-export type Refusal = 'noRoom' | 'full' | 'started' | 'busy' | 'bad';
+export type Refusal = 'noRoom' | 'full' | 'started' | 'busy' | 'bad' | 'version';
 
-/** The snapshot as sent: sight packed into a base64 bitset, tasks split off so they travel only when they change. */
-export interface WireView extends Omit<PlayerView, 'sight' | 'self'> {
+/** The snapshot as sent: sight packed into a base64 bitset; tasks and the meeting's clocks split off so the big parts travel only when they change. */
+export interface WireView extends Omit<PlayerView, 'sight' | 'self' | 'meeting'> {
   sight: string;
+  /** The meeting without its running clocks: it changes only when someone speaks or votes. */
+  meeting: Omit<NonNullable<PlayerView['meeting']>, 'timeLeft' | 'sayIn'> | null;
+  /** The clocks of the meeting, which tick with every snapshot: seconds left of the stage and until this seat may speak. */
+  clock: { timeLeft: number; sayIn: number } | null;
   self: Omit<PlayerView['self'], 'tasks'>;
   tasks: PlayerView['self']['tasks'];
 }
@@ -40,7 +47,7 @@ export interface WireView extends Omit<PlayerView, 'sight' | 'self'> {
 /** Server → browser. */
 export type ServerMessage =
   /** You are in: your seat, the token to come back with, who is host. */
-  | { t: 'room'; code: string; you: number; token: string; host: number; players: number }
+  | { t: 'room'; v: number; code: string; you: number; token: string; host: number; players: number }
   /** Seats changed hands or the host changed. */
   | { t: 'roster'; host: number; players: number }
   /** Only the parts of the snapshot that changed since the last message, and what happened meanwhile. */
@@ -66,8 +73,17 @@ const round = (value: number): number => Math.round(value * 100) / 100;
 /** The snapshot ready for the wire: packed sight, positions to the centimetre. */
 export function toWire(view: PlayerView): WireView {
   const { tasks, ...self } = view.self;
+  let meeting: WireView['meeting'] = null;
+  let clock: WireView['clock'] = null;
+  if (view.meeting) {
+    const { timeLeft, sayIn, ...rest } = view.meeting;
+    meeting = rest;
+    clock = { timeLeft: round(timeLeft), sayIn: round(sayIn) };
+  }
   return {
     ...view,
+    meeting,
+    clock,
     sight: packSight(view.sight),
     self,
     tasks,
