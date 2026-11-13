@@ -223,7 +223,8 @@ export function viewFor(state: WorldState, you: number): PlayerView {
     sight: sight.cells.slice(),
     sightVersion: sight.version,
     boxes: boxes.map((b) => ({ ...b })),
-    carpets: state.carpets.map((c) => ({ ...c, links: [...c.links] })),
+    // The hump of a rug out of sight would tell where the Goose hides.
+    carpets: state.carpets.map((c) => ({ ...c, links: [...c.links], occupied: c.occupied && (viewer.under === c.id || cellSeen(state, you, c.x, c.z)) })),
     siren: state.siren ? { ...state.siren } : null,
     meeting: m && {
       caller: m.caller,

@@ -3,6 +3,7 @@ import { CARPET_COOLDOWN, CARPET_HIDE_LIMIT, CARPET_HIDE_MAX, TICK } from '../co
 import { placeCarpets } from './carpets';
 import { meetingTable } from './meeting';
 import { findPath, fitsIn, nearestFree } from './nav';
+import { viewFor } from './view';
 import { applyCommand, createWorld, LOCAL_PLAYER, me, step, type Role, type SimEvent, type WorldState } from './world';
 
 function started(seed: number, role: Role): WorldState {
@@ -82,6 +83,24 @@ describe('carpets', () => {
     applyCommand(state, LOCAL_PLAYER, { type: 'interact' });
     expect(me(state).under).toBeNull();
     expect(seen(state)).toBeGreaterThan(0);
+  });
+
+  it('show a hump only on the rug someone is under, and only to those who see that rug', () => {
+    const state = onRug(42);
+    expect(state.carpets.every((c) => !c.occupied)).toBe(true);
+    applyCommand(state, LOCAL_PLAYER, { type: 'interact' });
+    step(state, TICK);
+    const rug = state.carpets[0]!;
+    expect(me(state).under).toBe(rug.id);
+    expect(state.carpets.filter((c) => c.occupied).map((c) => c.id)).toEqual([rug.id]);
+    // The Goose's own snapshot shows it; a seat that cannot see the rug gets no hump at all.
+    expect(viewFor(state, LOCAL_PLAYER).carpets[rug.id]!.occupied).toBe(true);
+    expect(viewFor(state, 3).carpets.some((c) => c.occupied)).toBe(false);
+    for (let t = 0; t < 1; t += TICK) step(state, TICK);
+    applyCommand(state, LOCAL_PLAYER, { type: 'interact' });
+    step(state, TICK);
+    expect(me(state).under).toBeNull();
+    expect(state.carpets.some((c) => c.occupied)).toBe(false);
   });
 
   it('are for the Goose only', () => {

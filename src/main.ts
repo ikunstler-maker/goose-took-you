@@ -288,6 +288,11 @@ function handle(events: SimEvent[]): void {
       } else if (event.who === LOCAL_PLAYER) hud.shout('hud.packedDone');
       hud.setTasks(world);
     }
+    // Anyone's dive under a rug, or climb out of it, plays for whoever got to see it.
+    if (event.type === 'carpet' && event.action !== 'crawl') {
+      const rug = world.carpets[event.carpet];
+      if (rug) chicks.dive(event.who, rug.x, rug.z, event.action);
+    }
     // The rest of the HUD and windows follow the local player.
     if ('who' in event && event.who !== LOCAL_PLAYER) continue;
     switch (event.type) {
@@ -684,7 +689,7 @@ function frame(now: number): void {
   boxes.update(world, time);
   broadcast?.update(world.broadcast, time);
   confetti.update(dt);
-  carpets?.update(world, time);
+  carpets?.update(world, time, dt);
   stage.follow(player.x, player.z, dt);
   stage.render();
   requestAnimationFrame(frame);

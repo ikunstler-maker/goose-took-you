@@ -16,6 +16,8 @@ export interface Carpet {
   links: number[];
   /** Seconds left of the lifted edge (dive or climb-out); cosmetic. */
   lift: number;
+  /** Someone hides under it right now: the rug shows a hump. */
+  occupied: boolean;
 }
 
 /** How many rugs go into each network: two or three per network. */
@@ -57,7 +59,7 @@ export function placeCarpets(level: Level, buckets: Buckets): Carpet[] {
       // Clear floor all around the rug, so walking onto it and climbing out always fit.
       if (blocked(level, buckets, x, z, CARPET_LONG / 2 + 0.45)) continue;
       if (Math.hypot(x - level.spawn.x, z - level.spawn.z) < 4) continue;
-      carpets.push({ id: carpets.length, x, z, alongX, room: room.id, net: -1, links: [], lift: 0 });
+      carpets.push({ id: carpets.length, x, z, alongX, room: room.id, net: -1, links: [], lift: 0, occupied: false });
       break;
     }
   }
