@@ -46,7 +46,15 @@ import {
   BOT_WARY_RANGE,
   BOT_WARY_REST,
   BOT_WARY_TIME,
+  BOT_DUCT_CHANCE,
+  BOT_DUCT_FAR,
+  BOT_DUCT_RANGE,
+  BOT_TABLET_DELAY,
+  TABLET_FRESH,
+  TABLET_RECENT,
+  TICK,
 } from '../config';
+import { tabletStatus, tagTarget } from './professions';
 import { cellCentre, findPath, fitsIn, nearestFree, type NavGrid } from './nav';
 import { createRng, type Rng } from './rng';
 import { WINDOW_TASKS } from './tasks';
@@ -139,6 +147,12 @@ export interface Brain {
   waryRest: number;
   /** Sightings since the last meeting, newest first; turned into meeting lines. */
   notes: Note[];
+  /** Chick: the Streamer's box whose siren it heard; it runs there to report. */
+  heard: number | null;
+  /** Team Lead: the chick its tablet showed freshly packed; told at the next meeting. */
+  tabletSaw: number | null;
+  /** SysAdmin under a rug: where it is really going, to crawl that way. */
+  duct: { x: number; z: number } | null;
 }
 
 export function createBrain(rng: Rng): Brain {
@@ -178,6 +192,9 @@ export function createBrain(rng: Rng): Brain {
     hideLeft: 0,
     hidden: 0,
     crawled: false,
+    heard: null,
+    tabletSaw: null,
+    duct: null,
   };
 }
 
@@ -339,7 +356,14 @@ function chooseGoal(state: WorldState, bot: Participant, avoid: number | null): 
   }
   const seen = seenVacation(state, bot);
   if (seen !== null) return { kind: 'report', box: seen };
-  const sure = bot.brain?.suspicion?.level === 2 && state.participants[bot.brain.suspicion.who]!.alive;
+  const brain = bot.brain;
+  if (brain && brain.heard !== null) {
+    // The Streamer's siren points at its box: everyone near runs there.
+    if (state.boxes.some((b) => b.id === brain.heard && !b.reported)) return { kind: 'report', box: brain.heard };
+    brain.heard = null;
+  }
+  const sure = (brain?.suspicion?.level === 2 && state.participants[brain.suspicion.who]!.alive) || (brain?.tabletSaw ?? null) !== null;
+  if (brain && brain.escape !== null) return { kind: 'carpet', carpet: brain.escape };
   if (sure && bot.buttonUses > 0 && state.buttonCooldown === 0 && bot.carrying === null) return { kind: 'button' };
   const fix = fixGoal(state, bot);
   if (fix !== null) return { kind: 'fix', point: fix };
@@ -563,6 +587,62 @@ function gooseMind(
   return false;
 }
 
+/**
+ * A bot chick's profession: the Analyst tags whoever comes close, the Team Lead
+ * glances at its tablet, the SysAdmin crawls under rugs. True when this tick is fully handled.
+ */
+function chickSkills(state: WorldState, bot: Participant, dt: number, rng: Rng, send: Send, events: SimEvent[]): boolean {
+  const brain = bot.brain!;
+  if (bot.under !== null) {
+    // Under a rug: crawl once towards where it is going, then climb out (the dust decides the rest).
+    brain.hideLeft -= dt;
+    if (brain.hideLeft > 0 || bot.carpetCooldown > 0) return true;
+    const here = state.carpets[bot.under]!;
+    const duct = brain.duct;
+    if (!brain.crawled && duct && here.links.length > 0) {
+      brain.crawled = true;
+      brain.hideLeft = between(rng, 1, 2);
+      const far = (id: number): number => Math.hypot(state.carpets[id]!.x - duct.x, state.carpets[id]!.z - duct.z);
+      const best = here.links.reduce((a, b) => (far(b) < far(a) ? b : a));
+      if (far(best) < far(here.id)) {
+        events.push(...send(bot.id, { type: 'crawl', to: best }));
+        return true;
+      }
+    }
+    brain.duct = null;
+    brain.goal = null;
+    brain.path = [];
+    events.push(...send(bot.id, { type: 'interact' }));
+    return true;
+  }
+  if (bot.profession === 'analyst' && bot.skillCooldown === 0 && tagTarget(state, bot) !== null) {
+    events.push(...send(bot.id, { type: 'skill' }));
+  } else if (bot.profession === 'lead' && bot.charged && bot.tablet === 0 && rng.next() < dt / BOT_TABLET_DELAY) {
+    events.push(...send(bot.id, { type: 'skill' }));
+    // A fresh holiday nobody has reported yet: that is worth a meeting.
+    for (const o of state.participants) {
+      if (tabletStatus(o, state.tick, TICK, TABLET_FRESH, TABLET_RECENT) !== 'fresh') continue;
+      if (state.boxes.some((b) => b.inside === o.id && !b.reported)) brain.tabletSaw = o.id;
+    }
+  }
+  return false;
+}
+
+/** SysAdmin heading far away: maybe take the cable duct, from a rug close by towards a rug near the goal. */
+function planDuct(state: WorldState, bot: Participant, task: number, rng: Rng): void {
+  const brain = bot.brain!;
+  if (bot.skillCooldown > 0 || brain.escape !== null || bot.carrying !== null) return;
+  const prop = state.level.props[state.stations[state.tasks[task]!.station]!.prop]!;
+  const far = Math.hypot(prop.x - bot.x, prop.z - bot.z);
+  if (far < BOT_DUCT_FAR) return;
+  const near = state.carpets.find((c) => Math.hypot(c.x - bot.x, c.z - bot.z) <= BOT_DUCT_RANGE);
+  if (!near || near.links.length === 0) return;
+  const gain = Math.min(...near.links.map((id) => Math.hypot(state.carpets[id]!.x - prop.x, state.carpets[id]!.z - prop.z)));
+  if (gain > far - BOT_DUCT_RANGE * 2 || rng.next() >= BOT_DUCT_CHANCE) return;
+  brain.escape = near.id;
+  brain.duct = { x: prop.x, z: prop.z };
+}
+
 /** One bot's decision for this tick. Bots act only through `send`, the same commands the player uses. */
 export function thinkBot(state: WorldState, nav: NavGrid, bot: Participant, dt: number, send: Send): SimEvent[] {
   const brain = bot.brain;
@@ -574,6 +654,7 @@ export function thinkBot(state: WorldState, nav: NavGrid, bot: Participant, dt: 
   };
 
   if (bot.role === 'goose' && gooseMind(state, bot, dt, rng, halt, send, events)) return events;
+  if (bot.role === 'chick' && chickSkills(state, bot, dt, rng, send, events)) return events;
 
   if (bot.activeTask !== null) {
     brain.work -= dt;
@@ -613,6 +694,7 @@ export function thinkBot(state: WorldState, nav: NavGrid, bot: Participant, dt: 
     brain.atGoal = 0;
   }
   const goal = brain.goal!;
+  if (goal === wanted && goal.kind === 'task' && bot.profession === 'sysadmin') planDuct(state, bot, goal.task, rng);
 
   // Reporting and packing use their own keys, not the E prompt.
   if (bot.canReport !== null && bot.role === 'chick') {

@@ -1,4 +1,6 @@
 import {
+  BOT_CARPET_CLAIMED,
+  BOT_CARPET_VOTE,
   BOT_FOLLOW_CHANCE,
   BOT_HONK_NOTICE,
   BOT_HUNCH_CHANCE,
@@ -59,6 +61,11 @@ export type ChatKind =
   | 'vouch'
   /** A bot noticed the Goose's neck stretch. */
   | 'neck'
+  /** Professions: the Analyst's pixel put someone at the box; «I am the SysAdmin»; «Liar, the SysAdmin is me»; the Team Lead's tablet. */
+  | 'pixel'
+  | 'sysadmin'
+  | 'sysadminLie'
+  | 'tablet'
   /** Quick reports only a human makes: met someone somewhere, a plain suspicion, a plain word for someone. */
   | 'sawIn'
   | 'suspect'
@@ -84,6 +91,10 @@ export const CHAT_NEEDS: Record<ChatKind, { about: boolean; room: boolean }> = {
   iFixed: { about: false, room: true },
   vouch: { about: true, room: true },
   neck: { about: true, room: true },
+  pixel: { about: true, room: true },
+  sysadmin: { about: false, room: false },
+  sysadminLie: { about: true, room: false },
+  tablet: { about: true, room: false },
   sawIn: { about: true, room: true },
   suspect: { about: true, room: false },
   trust: { about: true, room: false },
@@ -94,9 +105,10 @@ export const CHAT_NEEDS: Record<ChatKind, { about: boolean; room: boolean }> = {
 const SAYABLE: ReadonlySet<ChatKind> = new Set<ChatKind>([
   'saw', 'sawCarpet', 'sus', 'where', 'with', 'agree', 'defend', 'nothing',
   'idle', 'sawTask', 'sawFix', 'iFixed', 'vouch', 'sawIn', 'suspect', 'trust',
+  'pixel', 'sysadmin', 'sysadminLie', 'tablet',
 ]);
 /** Claims that pull bot votes towards the named participant, hard and soft; and away from it. */
-const HARD_CLAIMS: ReadonlySet<ChatKind> = new Set<ChatKind>(['saw', 'sawCarpet']);
+const HARD_CLAIMS: ReadonlySet<ChatKind> = new Set<ChatKind>(['saw', 'sawCarpet', 'pixel', 'sysadminLie']);
 const SOFT_CLAIMS: ReadonlySet<ChatKind> = new Set<ChatKind>(['sus', 'suspect', 'idle']);
 const VOUCHES: ReadonlySet<ChatKind> = new Set<ChatKind>(['trust', 'vouch', 'sawTask', 'sawFix', 'with']);
 
@@ -108,6 +120,7 @@ const SEEN_LINE: Record<SeenKind, ChatKind> = {
   fixed: 'sawFix',
   task: 'sawTask',
   met: 'sawIn',
+  pixel: 'pixel',
 };
 
 export interface ChatLine {
@@ -165,8 +178,8 @@ export interface Suspicion {
   who: number;
   level: number;
   room: RoomType | null;
-  /** What was seen: a pack, the Goose diving under / climbing out of a rug, someone by a fresh box, a long neck or a honk. */
-  deed: 'pack' | 'carpet' | 'box' | 'tell';
+  /** What was seen: a pack, someone diving under / climbing out of a rug, someone by a fresh box, a long neck or a honk, the Analyst's pixel at a pack. */
+  deed: 'pack' | 'carpet' | 'box' | 'tell' | 'pixel';
   /** `tell` only: how many neck stretches were noticed. */
   times?: number;
 }
@@ -184,7 +197,7 @@ export function noteDeed(state: WorldState, goose: Participant, victim: Particip
       continue;
     }
     // A pack outweighs a rug sighting; never downgrade.
-    if (p.brain.suspicion?.level === 2 && p.brain.suspicion.deed === 'pack' && deed === 'carpet') continue;
+    if (p.brain.suspicion?.level === 2 && p.brain.suspicion.deed !== 'carpet' && deed === 'carpet') continue;
     p.brain.suspicion = { who: goose.id, level: 2, room: roomType(state, goose.roomId), deed };
   }
 }
@@ -302,6 +315,9 @@ export function startMeeting(state: WorldState, caller: Participant, victim: num
     p.moving = false;
     p.thought = null;
     p.under = null;
+    p.ductLeft = 0;
+    p.tag = null;
+    p.tablet = 0;
     if (p.brain) {
       p.brain.goal = null;
       p.brain.path = [];
@@ -312,6 +328,7 @@ export function startMeeting(state: WorldState, caller: Participant, victim: num
       p.brain.escape = null;
     }
   }
+  state.siren = null;
   // Vacation boxes are taken away; whatever someone carried stays in their wings.
   state.boxes = state.boxes.filter((b) => b.kind !== 'vacation');
   seat(state);
@@ -344,7 +361,11 @@ export function startMeeting(state: WorldState, caller: Participant, victim: num
   }
   // Sightings are spent at the meeting; the next one starts from a clean slate.
   for (const p of state.participants) {
-    if (p.brain) p.brain.notes = [];
+    if (p.brain) {
+      p.brain.notes = [];
+      p.brain.tabletSaw = null;
+      p.brain.heard = null;
+    }
     p.seen = [];
   }
   events.push({ type: 'meetingStarted', who: caller.id, victim });
@@ -391,17 +412,24 @@ function planBots(
     return others.length > 0 ? others[rng.int(others.length)]!.id : SKIP_VOTE;
   };
 
-  // The strongest accusation in the room, which others may follow.
+  // The strongest accusation in the room, which others may follow: a pack seen or tracked beats a rug.
   let accused: number | null = null;
   let accuser: number | null = null;
+  let byCarpet = false;
   for (const b of bots) {
     const s = b.brain!.suspicion;
-    if (b.role === 'chick' && s && s.level === 2 && state.participants[s.who]!.alive) {
-      accused = s.who;
-      accuser = b.id;
-      break;
-    }
+    if (b.role !== 'chick' || !s || s.level !== 2 || !state.participants[s.who]!.alive) continue;
+    if (accused !== null && (s.deed === 'carpet' || !byCarpet)) continue;
+    accused = s.who;
+    accuser = b.id;
+    byCarpet = s.deed === 'carpet';
   }
+  // A rug is no proof: SysAdmins dive too. A bot caught on one says it is the SysAdmin, true or not.
+  const suspect = accused === null ? null : state.participants[accused]!;
+  const claimed = byCarpet && suspect !== null && suspect.brain !== null && (suspect.role === 'goose' || suspect.profession === 'sysadmin');
+  // The real SysAdmin knows a false claim when it hears one.
+  const realAdmin = claimed && suspect!.profession !== 'sysadmin' ? (bots.find((b) => b.profession === 'sysadmin' && b !== suspect) ?? null) : null;
+  const follow = claimed && !realAdmin ? BOT_CARPET_CLAIMED : BOT_FOLLOW_CHANCE;
 
   // The caller opens.
   if (caller.brain) {
@@ -423,11 +451,15 @@ function planBots(
     const room = roomsBefore[b.id] ?? null;
     const t = Math.min(at, talkTime(state) + voteTime(state) * 0.5);
     at += between(rng, 1.8, 3.4);
+    if (accused === b.id) {
+      if (claimed) say(t, b.id, 'sysadmin');
+      else say(t, b.id, 'defend', null, room);
+      // The Goose strikes back; an honest chick just keeps out of it.
+      vote(b.id, b.role === 'goose' ? accuser! : SKIP_VOTE, true);
+      continue;
+    }
     if (b.role === 'goose') {
-      if (accused === b.id) {
-        say(t, b.id, 'defend', null, room);
-        vote(b.id, accuser!, true);
-      } else if (accused !== null) {
+      if (accused !== null) {
         say(t, b.id, 'agree', accused);
         vote(b.id, accused);
       } else if (rng.next() < 0.4) {
@@ -444,8 +476,15 @@ function planBots(
       }
       continue;
     }
-    if (s && s.level === 2 && state.participants[s.who]!.alive) {
-      say(t, b.id, s.deed === 'carpet' ? 'sawCarpet' : 'saw', s.who, s.room);
+    if (b === realAdmin) {
+      say(t + 1.5, b.id, 'sysadminLie', accused);
+      vote(b.id, accused!, true);
+    } else if (s && s.level === 2 && s.deed === 'carpet' && state.participants[s.who]!.alive) {
+      say(t, b.id, 'sawCarpet', s.who, s.room);
+      const chance = s.who === accused && claimed && !realAdmin ? BOT_CARPET_CLAIMED : BOT_CARPET_VOTE;
+      vote(b.id, rng.next() < chance ? s.who : SKIP_VOTE);
+    } else if (s && s.level === 2 && state.participants[s.who]!.alive) {
+      say(t, b.id, s.deed === 'pixel' ? 'pixel' : 'saw', s.who, s.room);
       vote(b.id, s.who, true);
     } else if (s && s.deed === 'tell' && state.participants[s.who]!.alive) {
       say(t, b.id, 'neck', s.who, s.room);
@@ -458,9 +497,13 @@ function planBots(
       const seen = b.brain!.notes.find((n) => n.kind === 'task' && n.who === accused)!;
       say(t, b.id, 'vouch', accused, seen.room);
       vote(b.id, SKIP_VOTE, true);
-    } else if (accused !== null && accused !== b.id && rng.next() < BOT_FOLLOW_CHANCE) {
+    } else if (accused !== null && accused !== b.id && rng.next() < follow) {
       say(t, b.id, 'agree', accused);
       vote(b.id, accused);
+    } else if (b.brain!.tabletSaw !== null) {
+      // The Team Lead's tablet: who went on holiday just before the meeting.
+      say(t, b.id, 'tablet', b.brain!.tabletSaw);
+      vote(b.id, rng.next() < BOT_RANDOM_VOTE ? randomOther(b) : SKIP_VOTE);
     } else if (noteLine(b, state) && (noteLine(b, state)!.who !== b.id || rng.next() < 0.5)) {
       const note = noteLine(b, state)!;
       const kind: ChatKind = note.who === b.id ? 'iFixed' : note.kind === 'idle' ? 'idle' : note.kind === 'task' ? 'sawTask' : 'sawFix';
@@ -494,7 +537,7 @@ function noteLine(bot: Participant, state: WorldState): Note | null {
 /** Ready-made lines for a human: the gravest sightings first, then its own whereabouts. */
 function hintsFor(state: WorldState, p: Participant, room: RoomType | null): ChatLine[] {
   if (p.brain || !p.alive) return [];
-  const order: SeenKind[] = ['pack', 'carpet', 'idle', 'fixed', 'task', 'met'];
+  const order: SeenKind[] = ['pack', 'pixel', 'carpet', 'idle', 'fixed', 'task', 'met'];
   const lines: ChatLine[] = [];
   for (const kind of order) {
     for (const n of p.seen) {
@@ -543,7 +586,8 @@ export function sayLine(
   m.saidAt[id] = m.elapsed;
   m.chat.push({ who: id, kind, about, room });
   const events: SimEvent[] = [{ type: 'chat', who: id }];
-  if (about === null || m.swayed[id] || !state.participants[about]!.alive) return events;
+  if (m.swayed[id]) return events;
+  if (kind !== 'sysadmin' && (about === null || !state.participants[about]!.alive)) return events;
 
   const rng = createRng(((state.level.seed * 7919 + state.tick * 13 + id * 101 + m.chat.length) >>> 0) || 1);
   const pending = (bot: Participant): Planned | undefined => m.plan.find((p) => p.who === bot.id && p.vote !== null);
@@ -551,7 +595,26 @@ export function sayLine(
     m.plan.push({ at: m.elapsed + between(rng, 1.2, 2.8), who, line: { who, ...line }, vote: null, firm: false });
   };
   const bots = state.participants.filter((p) => p.brain && p.alive && p.id !== id);
-  if (HARD_CLAIMS.has(kind) || SOFT_CLAIMS.has(kind)) {
+  if (kind === 'sysadmin') {
+    m.swayed[id] = true;
+    // A bot SysAdmin knows a false claim; otherwise the claim softens votes against the speaker.
+    const admin = speaker.profession === 'sysadmin' ? null : (bots.find((b) => b.profession === 'sysadmin') ?? null);
+    for (const b of bots) {
+      const vote = pending(b);
+      if (b === admin) {
+        reply(b.id, { kind: 'sysadminLie', about: id, room: null });
+        if (vote) {
+          vote.vote = id;
+          vote.firm = true;
+        }
+        continue;
+      }
+      if (!vote || vote.firm) continue;
+      if (admin) {
+        if (b.role === 'goose' || rng.next() < PLAYER_SWAY_SAW) vote.vote = id;
+      } else if (vote.vote === id && b.role !== 'goose' && rng.next() < PLAYER_SWAY_VOUCH) vote.vote = SKIP_VOTE;
+    }
+  } else if (HARD_CLAIMS.has(kind) || SOFT_CLAIMS.has(kind)) {
     m.swayed[id] = true;
     const chance = HARD_CLAIMS.has(kind) ? PLAYER_SWAY_SAW : PLAYER_SWAY_SUS;
     let agreed = false;
@@ -559,7 +622,8 @@ export function sayLine(
       const vote = pending(b);
       if (b.id === about) {
         // The accused answers; a Goose strikes back at whoever pointed at it.
-        reply(b.id, { kind: 'defend', about: null, room: m.rooms[b.id] ?? null });
+        const admin = kind === 'sawCarpet' && (b.role === 'goose' || b.profession === 'sysadmin');
+        reply(b.id, admin ? { kind: 'sysadmin', about: null, room: null } : { kind: 'defend', about: null, room: m.rooms[b.id] ?? null });
         if (vote && b.role === 'goose') {
           vote.vote = id;
           vote.firm = true;
@@ -667,6 +731,7 @@ export function stepMeeting(state: WorldState, dt: number, send: (who: number, v
         const out = state.participants[m.ejected]!;
         out.alive = false;
         out.ejected = true;
+        out.outAt = state.tick;
         out.canPack = null;
         out.canReport = null;
         out.prompt = null;

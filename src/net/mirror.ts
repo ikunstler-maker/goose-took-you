@@ -52,6 +52,7 @@ export function applyView(world: WorldState, view: WireView, changed: Partial<Wi
   world.broadcast = view.broadcast;
   world.buttonCooldown = view.buttonCooldown;
   world.sabotage = view.sabotage;
+  world.siren = view.siren;
 
   if (changed.seats || changed.self) {
     for (const seat of view.seats) {
@@ -63,6 +64,7 @@ export function applyView(world: WorldState, view: WireView, changed: Partial<Wi
       p.isBot = !seat.human;
       // Unknown roles read as chicks: that is all anyone can tell by looking.
       p.role = seat.role ?? 'chick';
+      p.profession = seat.profession;
       const body = seat.body;
       if (!body) {
         p.x = p.z = NOWHERE;
@@ -104,6 +106,13 @@ export function applyView(world: WorldState, view: WireView, changed: Partial<Wi
     self.watching = mine.watching;
     self.visited = mine.visited;
     self.roomId = mine.roomId;
+    self.profession = mine.profession;
+    self.skillCooldown = mine.skillCooldown;
+    self.tag = mine.tag;
+    self.tablet = mine.tablet;
+    self.charged = mine.charged;
+    self.ductLeft = mine.ductLeft;
+    if (mine.outAt) mine.outAt.forEach((at, id) => (world.participants[id]!.outAt = at));
     world.sabotageCooldown = mine.sabotageCooldown;
   }
   if (changed.tasks) for (const task of view.tasks) world.tasks[task.id] = { ...task };

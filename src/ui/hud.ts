@@ -57,7 +57,8 @@ export function createHud(handlers: { onNewOffice(): void; onLangChange(lang: La
       done: own.filter((task) => task.done).length,
       count: own.length,
     });
-    el('controls').textContent = goose ? t('hud.controlsGoose') : t('hud.controls');
+    const skill = world.phase !== 'lobby' && (me(world).profession === 'analyst' || me(world).profession === 'lead');
+    el('controls').textContent = goose ? t('hud.controlsGoose') : skill ? t('hud.controlsSkill') : t('hud.controls');
     const items = own.map((task) => {
         const li = document.createElement('li');
         const roomType = level.rooms[stations[task.station]!.room]!.type;

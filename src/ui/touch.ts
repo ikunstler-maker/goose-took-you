@@ -1,9 +1,10 @@
 import { STICK_DEADZONE, STICK_FLICK, STICK_RADIUS } from '../config';
 import { t } from '../i18n';
+import { tagTarget } from '../sim/professions';
 import { me, type WorldState } from '../sim/world';
 
 /** What a touch button asks for; `main.ts` turns it into the same sim command a key would send. */
-export type TouchAction = 'interact' | 'report' | 'pack' | 'overheat' | 'call';
+export type TouchAction = 'interact' | 'report' | 'pack' | 'overheat' | 'call' | 'skill';
 
 export interface TouchControls {
   /** Shows the buttons that make sense right now; cheap to call every frame. */
@@ -49,7 +50,7 @@ export function createTouchControls(
   const actions = document.createElement('div');
   actions.className = 'actions';
   // The main button sits in the corner under the thumb; the rest fan out from it.
-  const ORDER: TouchAction[] = ['interact', 'report', 'pack', 'overheat', 'call'];
+  const ORDER: TouchAction[] = ['interact', 'report', 'pack', 'skill', 'overheat', 'call'];
   const buttons = new Map<TouchAction, HTMLButtonElement>();
   for (const action of ORDER) {
     const b = document.createElement('button');
@@ -181,7 +182,17 @@ export function createTouchControls(
     const hidden = playing && self.under !== null;
     const wait = Math.ceil(world.sabotageCooldown);
     const packWait = Math.ceil(self.packCooldown);
+    // The profession's button: the Analyst's pixel and the Team Lead's tablet are pressed; a SysAdmin sees its dust timer.
+    const job = playing && self.role === 'chick' ? self.profession : null;
+    const skillShown = job === 'analyst' || job === 'lead' || (job === 'sysadmin' && hidden);
+    const skillWait = job === 'analyst' ? Math.ceil(self.skillCooldown) : job === 'sysadmin' ? Math.max(0, Math.ceil(self.ductLeft)) : 0;
+    const skillReady =
+      job === 'analyst' ? skillWait === 0 && tagTarget(world, self) !== null : job === 'lead' ? self.charged && self.tablet === 0 : false;
     const state = [
+      job,
+      skillShown,
+      skillWait,
+      skillReady,
       playing,
       playing && (hidden || self.prompt !== null),
       playing && !hidden && self.canReport !== null,
@@ -208,6 +219,8 @@ export function createTouchControls(
     const suffix = wait > 0 && !world.sabotage ? ` ${wait}` : '';
     set('overheat', goose, t('touch.overheat') + suffix, blocked);
     set('call', goose, t('touch.call') + suffix, blocked);
+    if (job) set('skill', skillShown, t(`skill.${job}`) + (skillWait > 0 ? ` ${skillWait}` : ''), !skillReady);
+    else set('skill', false, '');
   };
 
   root.hidden = true;

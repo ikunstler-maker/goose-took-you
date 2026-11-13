@@ -1,9 +1,10 @@
-import { HONK_HEAR_RANGE, PLAYER_SAY_COOLDOWN } from '../config';
+import { HONK_HEAR_RANGE, PLAYER_SAY_COOLDOWN, SNEEZE_HEAR_RANGE } from '../config';
 import type { Box } from './cargo';
 import { cameraSpots, cameraSees } from './cameras';
 import type { Carpet } from './carpets';
 import { seesHonk, type ChatLine, type MeetingStage } from './meeting';
 import type { Sabotage, SabotageKind } from './sabotage';
+import type { Profession, Siren, Tag } from './professions';
 import type { Task } from './tasks';
 import {
   isAway,
@@ -45,6 +46,8 @@ export interface PlayerView {
   boxes: Box[];
   carpets: Carpet[];
   meeting: MeetingView | null;
+  /** The packed Streamer's siren: everyone gets the arrow. */
+  siren: Siren | null;
 }
 
 /** A seat as others know it. */
@@ -59,6 +62,8 @@ export interface SeatView {
   away: boolean;
   /** Known only for yourself, for someone voted out, and for everyone once the match is over. */
   role: Role | null;
+  /** Known only for yourself and for everyone once the match is over. */
+  profession: Profession | null;
   /** Where it is and what it does; null when out of sight. */
   body: BodyView | null;
 }
@@ -96,6 +101,14 @@ export interface SelfView {
   watching: boolean;
   visited: number[];
   tasks: Task[];
+  profession: Profession | null;
+  skillCooldown: number;
+  tag: Tag | null;
+  tablet: number;
+  charged: boolean;
+  ductLeft: number;
+  /** Team Lead with the tablet open: the tick each seat left the match, -1 while in it; null otherwise. */
+  outAt: number[] | null;
 }
 
 export interface MeetingView {
@@ -165,6 +178,7 @@ export function viewFor(state: WorldState, you: number): PlayerView {
     human: !p.isBot,
     away: isAway(p),
     role: p === viewer || over || p.ejected ? p.role : null,
+    profession: p === viewer || over ? p.profession : null,
     body: seesBody(state, viewer, p) ? bodyOf(state, viewer, p) : null,
   }));
   const boxes = state.boxes.filter((b) => {
@@ -198,11 +212,19 @@ export function viewFor(state: WorldState, you: number): PlayerView {
       watching: viewer.watching,
       visited: [...viewer.visited],
       tasks: state.tasks.filter((t) => t.owner === you).map((t) => ({ ...t })),
+      profession: viewer.profession,
+      skillCooldown: viewer.skillCooldown,
+      tag: viewer.tag ? { ...viewer.tag, trail: [...viewer.tag.trail] } : null,
+      tablet: viewer.tablet,
+      charged: viewer.charged,
+      ductLeft: viewer.ductLeft,
+      outAt: viewer.tablet > 0 ? state.participants.map((p) => p.outAt) : null,
     },
     sight: sight.cells.slice(),
     sightVersion: sight.version,
     boxes: boxes.map((b) => ({ ...b })),
     carpets: state.carpets.map((c) => ({ ...c, links: [...c.links] })),
+    siren: state.siren ? { ...state.siren } : null,
     meeting: m && {
       caller: m.caller,
       victim: m.victim,
@@ -230,7 +252,7 @@ const PUBLIC: ReadonlySet<SimEvent['type']> = new Set<SimEvent['type']>([
 /** Events only their own seat hears. */
 const PRIVATE: ReadonlySet<SimEvent['type']> = new Set<SimEvent['type']>([
   'rushStarted', 'rushFailed', 'badgeTaken', 'camerasOpened', 'camerasClosed', 'roomChanged',
-  'promptChanged', 'taskDone', 'taskOpened', 'taskClosed',
+  'promptChanged', 'taskDone', 'taskOpened', 'taskClosed', 'tagged', 'tabletOpened',
 ]);
 
 /**
@@ -251,6 +273,14 @@ export function eventsFor(state: WorldState, you: number, events: readonly SimEv
       // Heard by distance alone, walls or not; only the Goose knows it was itself.
       if (event.who === you) out.push(event);
       else if (Math.hypot(event.x - viewer.x, event.z - viewer.z) <= HONK_HEAR_RANGE) out.push({ ...event, who: -1 });
+      continue;
+    }
+    if (event.type === 'sneezed') {
+      // Heard nearby, through walls; whose sneeze it was takes eyes.
+      if (event.who === you) out.push(event);
+      else if (Math.hypot(event.x - viewer.x, event.z - viewer.z) <= SNEEZE_HEAR_RANGE) {
+        out.push(cellSeen(state, you, event.x, event.z) ? event : { ...event, who: -1 });
+      }
       continue;
     }
     const who = state.participants[event.who]!;

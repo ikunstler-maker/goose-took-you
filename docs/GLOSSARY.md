@@ -80,6 +80,12 @@
 | Вибуття, «вилітає з офісу» | учасник, якого вигнали голосуванням | `Participant.ejected`, `Meeting.ejected` |
 | Підозра | що бот-курча бачило: пакування (2) чи когось біля коробки (1) | `Suspicion`, `Brain.suspicion` |
 | Килимок | прямокутний килимок, під який пірнає Гусь, щоб сховатися й переповзти до іншого | `Carpet`, `WorldState.carpets`, `src/sim/carpets.ts`, `CARPET_*` |
+| Професія | навичка, яку на старті отримують 3 з 7 курчат; зовні не видно | `Profession`, `Participant.profession`, `src/sim/professions.ts`, `PROFESSIONS_PER_MATCH` |
+| Навичка | дія професії: клавіша `F` або кнопка на телефоні | команда `skill`, `useSkill`, `Participant.skillCooldown`, `src/ui/skill.ts` |
+| Аналітик Трекерів, піксель | професія: непомітна мітка на колезі, слід на мінікарті | `'analyst'`, `Tag`, `Participant.tag`, подія `tagged`, `TAG_*` |
+| Тімлід Моушну, Табель | професія: планшет зі статусами всіх («на роботі», «у відпустці», «звільнено») | `'lead'`, `Participant.tablet`, `charged`, `tabletStatus`, `TABLET_*` |
+| Сисадмін Серверної, кабель-канал | професія: курча, якому можна під килимки; «апчхи!» після 8 с | `'sysadmin'`, `Participant.ductLeft`, подія `sneezed`, `DUCT_*` |
+| Стрімер Казіка, сирена «MEGA ALARM 777!» | професія: запакований вмикає сирену й стрілку до коробки | `'streamer'`, `Siren`, `WorldState.siren`, подія `siren`, `SIREN_*` |
 | Мережа килимків | 2–3 килимки, між якими можна переповзати | `Carpet.net`, `Carpet.links` |
 | Під килимком | Гусь схований: його ніхто не бачить, огляд 4 м | `Participant.under`, команди `interact` / `crawl` |
 | Лабораторія Гемблінгу | кімната зі слот-автоматами; сатира, без грошей | `RoomType: 'gambling'`, `slotMachine`, `bigWinSign` |
