@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ACCESSORIES, CHICK_COLORS, TELL_TIME, TELL_VISIBLE_RANGE } from '../config';
+import { seesHonk } from '../sim/meeting';
 import { LOCAL_PLAYER, type WorldState } from '../sim/world';
 import { createChick, type ChickView } from './chick';
 import { mat } from './kit';
@@ -46,7 +47,8 @@ export function createChicks(): ChicksView {
         // The neck only reads up close; the player's own Goose always shows it to its player.
         const close = p.id === LOCAL_PLAYER || Math.hypot(p.x - self.x, p.z - self.z) <= TELL_VISIBLE_RANGE;
         const neck = p.tell > 0 && close ? Math.sin((p.tell / TELL_TIME) * Math.PI) : 0;
-        const bubble = p.tellBubble && close ? t('goose.tell') : p.thought ? t(`thought.${p.thought}`) : null;
+        // «Га-га» shows only to whoever the Goose is turned towards, up close; the Goose sees its own.
+        const bubble = seesHonk(world, self, p) ? t('goose.tell') : p.thought ? t(`thought.${p.thought}`) : null;
         view.update(p.x, p.z, p.facing, p.moving, p.emotion, time, dt, neck, bubble);
         if (p.id === LOCAL_PLAYER) {
           halo.position.set(p.x, 0.035, p.z);

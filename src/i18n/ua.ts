@@ -310,6 +310,7 @@ export const ua = {
   'hud.fix.call': '{key} — підписати NDA',
   'hud.sabotage.ready': 'Саботаж: 1 — «Перегрів» · 2 — «Дзвінок Модуса»',
   'hud.sabotage.wait': 'Саботаж буде готовий через {seconds} с',
+  'hud.sabotage.first': 'Саботаж відкриється після перших зборів або через {seconds} с',
   'hud.sabotage.active': 'Саботаж триває…',
   'over.reasonOverheat': 'Рендер-ферма згоріла: вентилятори так ніхто й не перезапустив.',
   'over.reasonCall': 'NDA не підписали вчасно: Модус забрав бюджет і офіс разом із ним.',

@@ -1,4 +1,4 @@
-import { ALARM_EVERY, HEARING_RANGE, KNOCK_EVERY, STEP_EVERY, TELL_VISIBLE_RANGE, TICK } from './config';
+import { ALARM_EVERY, HEARING_RANGE, HONK_HEAR_RANGE, KNOCK_EVERY, STEP_EVERY, TICK } from './config';
 import { createSound, type SoundName } from './audio/sound';
 import { createMinigameHost } from './minigames/host';
 import { createBoxes } from './render/boxes';
@@ -188,6 +188,13 @@ function hear(event: SimEvent): void {
     const packedMe = event.type === 'packed' && event.victim === LOCAL_PLAYER;
     sound.play(action, event.who === LOCAL_PLAYER || packedMe ? 1 : loudness(actor.x, actor.z));
   }
+  if (event.type === 'honked') {
+    // «Га-га» carries a few metres, walls or not; the Goose hears its own, quieter.
+    const self = me(world);
+    const gain = event.who === LOCAL_PLAYER ? 0.5 : Math.max(0, 1 - Math.hypot(event.x - self.x, event.z - self.z) / HONK_HEAR_RANGE);
+    if (gain > 0) sound.play('honk', gain);
+    return;
+  }
   if (event.type === 'sabotageEnded' && event.fixed) sound.play('fixed');
   if (event.type === 'newsLaunched') {
     // Confetti and cheers reach whoever is close enough to see the button.
@@ -207,7 +214,6 @@ function hear(event: SimEvent): void {
 let stepIn = 0;
 let knockIn = 0;
 let alarmIn = 0;
-const tellHeard = new Map<number, boolean>();
 
 /** Sounds that follow the state rather than one event: steps, the knocking box, the alarm, «га-га». */
 function ambience(dt: number): void {
@@ -227,15 +233,6 @@ function ambience(dt: number): void {
   if (playing && world.sabotage && alarmIn <= 0) {
     sound.play('alarm', 0.6);
     alarmIn = ALARM_EVERY;
-  }
-  for (const p of world.participants) {
-    const stretching = playing && p.alive && p.tell > 0 && p.under === null;
-    if (stretching && !tellHeard.get(p.id)) {
-      // The Goose hears its own neck; chicks only from close by and in plain sight.
-      const near = Math.hypot(p.x - self.x, p.z - self.z) <= TELL_VISIBLE_RANGE;
-      sound.play('honk', p === self ? 0.5 : near ? loudness(p.x, p.z) : 0);
-    }
-    tellHeard.set(p.id, stretching);
   }
 }
 

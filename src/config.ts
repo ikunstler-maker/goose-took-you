@@ -1,19 +1,21 @@
 // All tunables live here (see CLAUDE.md, invariant 6).
 
 /** Office side length in cells; one cell is one metre. */
-export const MAP = 116;
+export const MAP = 104;
 /** Rooms are laid out in a SECTORS x SECTORS grid of loose sectors. */
 export const SECTORS = 4;
 /** Sector index (row * SECTORS + col) that always holds the lobby. */
 export const LOBBY_SECTOR = 5;
 /** Side of the square that holds a room's fixed hub furniture. */
 export const CORE = 12;
+/** Free strip kept between a room and the edge of its sector, cells; two neighbours leave twice that for a corridor. */
+export const ROOM_MARGIN = 2;
 /** Largest bounding box side of a room shape. */
 export const ROOM_MAX = 22;
 /** Chance that a room in an outer sector is pushed against the facade (gets windows). */
 export const FACADE_CHANCE = 0.6;
 /** Chance that a non-tree corridor link between neighbouring rooms is built (loops). */
-export const EXTRA_LINK_CHANCE = 0.55;
+export const EXTRA_LINK_CHANCE = 0.9;
 /** Dead-end nooks branching off corridors. */
 export const NOOKS = 10;
 /** Filler furniture budget: one item per this many floor cells. */
@@ -158,12 +160,19 @@ export const PACK_COOLDOWN = 18;
 export const PACK_FIRST_COOLDOWN = 10;
 /** How close a chick must be to a vacation box to report it, metres. */
 export const REPORT_RANGE = 1.6;
-/** Goose tell: the neck stretches every TELL_MIN..TELL_MAX seconds for TELL_TIME. */
-export const TELL_MIN = 12;
-export const TELL_MAX = 15;
+/** Goose tell, the neck: only while a sabotage runs it stretches every TELL_MIN..TELL_MAX seconds for TELL_TIME. */
+export const TELL_MIN = 4;
+export const TELL_MAX = 6;
 export const TELL_TIME = 0.9;
-/** Someone this close to a stretching Goose gets the «га-га?» bubble, metres. */
-export const TELL_BUBBLE_RANGE = 2.2;
+/** Goose tell, the honk: «га-га» slips out every HONK_MIN..HONK_MAX seconds for HONK_TIME, sabotage or not. */
+export const HONK_MIN = 30;
+export const HONK_MAX = 50;
+export const HONK_TIME = 0.9;
+/** The honk is heard this far, through walls too, without telling who it was, metres. */
+export const HONK_HEAR_RANGE = 6;
+/** Its bubble is seen only from this close, and only by whoever the Goose is turned towards (within this angle of its heading, radians). */
+export const HONK_SEE_RANGE = 2.5;
+export const HONK_SEE_ANGLE = 1.05;
 /** The neck stretch is drawn only when the local player is this close, metres. */
 export const TELL_VISIBLE_RANGE = 5;
 /** Bot Goose: a chick counts as alone when nobody else is this close to it, metres. */
@@ -262,8 +271,8 @@ export const CALL_TIME = 50;
 export const CALL_SIGNERS = 2;
 /** Pause before the first sabotage, after a fixed one and after every meeting, seconds. */
 export const SABOTAGE_COOLDOWN = 40;
-/** The Goose's neck stretches this many times more often while a sabotage runs. */
-export const TELL_SABOTAGE_RATE = 3;
+/** No sabotage this long from the start, seconds; the end of the first meeting opens it sooner (after the usual pause). */
+export const SABOTAGE_FIRST = 150;
 /** Share of bot chicks that drop everything and go to fix a sabotage. */
 export const BOT_FIX_CHANCE = 0.4;
 /** Bot Goose: waits this long after the cooldown before it starts a sabotage, seconds. */
@@ -398,6 +407,8 @@ export const GPU_DRIFT_PERIOD = 6;
 
 /** Bots and the Goose's neck: chance a bot chick in sight and range notices one stretch. */
 export const BOT_TELL_NOTICE = 0.3;
+/** Chance a bot chick the Goose honks at, face to face, takes note. */
+export const BOT_HONK_NOTICE = 0.6;
 /** Chance it votes for the neck's owner after noticing once, and after noticing twice or more. */
 export const BOT_TELL_VOTE = 0.5;
 export const BOT_TELL_SURE = 0.9;

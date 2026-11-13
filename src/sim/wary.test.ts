@@ -13,6 +13,8 @@ function gooseMatch(seed: number): WorldState {
 /** Forces the next neck stretch right now. */
 function stretch(state: WorldState): void {
   const goose = me(state);
+  // The neck shows only while a sabotage runs.
+  state.sabotage ??= { kind: 'call', id: 1, left: 999, total: 999, done: [] };
   goose.tell = 0;
   goose.tellIn = TICK / 2;
   step(state, TICK);

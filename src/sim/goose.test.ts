@@ -4,14 +4,21 @@ import {
   GOOSE_GRACE,
   GOOSE_MEMORY,
   GOOSE_PACK_FREEZE,
+  HONK_HEAR_RANGE,
+  HONK_MAX,
+  HONK_MIN,
   PACK_COOLDOWN,
   PARTICIPANTS,
+  SABOTAGE_COOLDOWN,
+  SABOTAGE_FIRST,
   TELL_MAX,
   TELL_TIME,
   THOUGHT_TIME,
   TICK,
 } from '../config';
 import { gooseSees } from './bots';
+import { meetingTable, seesHonk } from './meeting';
+import { eventsFor, viewFor } from './view';
 import { applyCommand, createWorld, LOCAL_PLAYER, me, progress, step, type Participant, type Role, type SimEvent, type WorldState } from './world';
 
 function started(seed: number, role: Role | null = null): WorldState {
@@ -109,24 +116,91 @@ describe('packing and reporting', () => {
 });
 
 describe('Goose tell', () => {
-  it('stretches the neck every 12–15 s and shows «га-га?» only with someone close', () => {
+  it('stretches the neck only while a sabotage runs', () => {
     const state = started(42, 'goose');
     for (const p of state.participants) p.brain = null;
     let stretched = 0;
-    let bubbles = 0;
-    for (let t = 0; t < TELL_MAX * 2 + 1; t += TICK) {
+    for (let t = 0; t < 60; t += TICK) {
       step(state, TICK);
-      if (me(state).tell === TELL_TIME - TICK || Math.abs(me(state).tell - (TELL_TIME - TICK)) < 1e-9) stretched++;
-      if (me(state).tellBubble) bubbles++;
+      if (me(state).tell > 0) stretched++;
     }
-    expect(stretched).toBeGreaterThanOrEqual(2);
-    // Bots stand at the spawn right next to the player.
-    expect(bubbles).toBeGreaterThan(0);
-    me(state).x += 20;
+    expect(stretched).toBe(0);
+    state.sabotageCooldown = 0;
+    expect(applyCommand(state, LOCAL_PLAYER, { type: 'sabotage', kind: 'overheat' })).not.toEqual([]);
+    let starts = 0;
     for (let t = 0; t < TELL_MAX * 2 + 1; t += TICK) {
+      const before = me(state).tell;
       step(state, TICK);
-      expect(me(state).tellBubble).toBe(false);
+      if (before === 0 && me(state).tell > 0) starts++;
     }
+    expect(starts).toBeGreaterThanOrEqual(2);
+    expect(me(state).tell).toBeLessThanOrEqual(TELL_TIME);
+  });
+
+  it('honks now and then: heard nearby, seen only face to face', () => {
+    const state = started(42, 'goose');
+    for (const p of state.participants) p.brain = null;
+    const goose = me(state);
+    const [front, behind, far] = [state.participants[1]!, state.participants[2]!, state.participants[3]!];
+    // The Goose faces +z: one chick stands before its beak, one behind its back, one across the lobby.
+    goose.facing = 0;
+    const place = (): void => {
+      front.x = goose.x;
+      front.z = goose.z + 1.5;
+      behind.x = goose.x;
+      behind.z = goose.z - 1.5;
+      far.x = goose.x + HONK_HEAR_RANGE + 3;
+      far.z = goose.z;
+    };
+    let honks = 0;
+    let events: SimEvent[] = [];
+    for (let t = 0; t < HONK_MAX + 1 && honks === 0; t += TICK) {
+      place();
+      events = step(state, TICK);
+      if (events.some((e) => e.type === 'honked')) honks++;
+    }
+    expect(honks).toBe(1);
+    // Not before the rarer timer allows.
+    expect(state.tick * TICK).toBeGreaterThan(HONK_MIN - 1);
+    expect(goose.honk).toBeGreaterThan(0);
+    expect(seesHonk(state, front, goose)).toBe(true);
+    expect(seesHonk(state, behind, goose)).toBe(false);
+    expect(seesHonk(state, far, goose)).toBe(false);
+    expect(seesHonk(state, goose, goose)).toBe(true);
+    // Everyone within earshot hears it, back turned or not, but not whose it was.
+    expect(eventsFor(state, behind.id, events)).toContainEqual(expect.objectContaining({ type: 'honked', who: -1 }));
+    expect(eventsFor(state, front.id, events)).toContainEqual(expect.objectContaining({ type: 'honked', who: -1 }));
+    expect(eventsFor(state, far.id, events).some((e) => e.type === 'honked')).toBe(false);
+    expect(eventsFor(state, goose.id, events)).toContainEqual(expect.objectContaining({ type: 'honked', who: goose.id }));
+    // The Goose's own snapshot shows its own bubble.
+    expect(viewFor(state, goose.id).seats[goose.id]!.body!.honk).toBeGreaterThan(0);
+  });
+
+  it('keeps sabotage closed at the start until the first meeting or the start timer', () => {
+    const state = started(42, 'goose');
+    for (const p of state.participants) p.brain = null;
+    expect(state.sabotageCooldown).toBe(SABOTAGE_FIRST);
+    for (let t = 0; t < SABOTAGE_COOLDOWN + 5; t += TICK) step(state, TICK);
+    expect(applyCommand(state, LOCAL_PLAYER, { type: 'sabotage', kind: 'call' })).toEqual([]);
+    // A meeting ends: the usual pause, then it is open.
+    state.buttonCooldown = 0;
+    const table = meetingTable(state)!;
+    me(state).x = table.x + table.radius + 0.5;
+    me(state).z = table.z;
+    step(state, TICK);
+    applyCommand(state, LOCAL_PLAYER, { type: 'interact' });
+    expect(state.phase).toBe('meeting');
+    for (let t = 0; t < 80 && state.phase === 'meeting'; t += TICK) step(state, TICK);
+    expect(state.phase).toBe('play');
+    expect(state.sabotageCooldown).toBeLessThanOrEqual(SABOTAGE_COOLDOWN);
+    for (let t = 0; t < SABOTAGE_COOLDOWN + 0.5; t += TICK) step(state, TICK);
+    expect(applyCommand(state, LOCAL_PLAYER, { type: 'sabotage', kind: 'call' })).not.toEqual([]);
+
+    // No meeting at all: the start timer opens it.
+    const quiet = started(42, 'goose');
+    for (const p of quiet.participants) p.brain = null;
+    for (let t = 0; t < SABOTAGE_FIRST + 0.5; t += TICK) step(quiet, TICK);
+    expect(applyCommand(quiet, LOCAL_PLAYER, { type: 'sabotage', kind: 'call' })).not.toEqual([]);
   });
 });
 

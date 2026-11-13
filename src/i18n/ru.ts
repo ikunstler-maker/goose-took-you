@@ -312,6 +312,7 @@ export const ru: Record<I18nKey, string> = {
   'hud.fix.call': '{key} — подписать NDA',
   'hud.sabotage.ready': 'Саботаж: 1 — «Перегрев» · 2 — «Звонок Модуса»',
   'hud.sabotage.wait': 'Саботаж будет готов через {seconds} с',
+  'hud.sabotage.first': 'Саботаж откроется после первого собрания или через {seconds} с',
   'hud.sabotage.active': 'Саботаж идёт…',
   'over.reasonOverheat': 'Рендер-ферма сгорела: вентиляторы так никто и не перезапустил.',
   'over.reasonCall': 'NDA не подписали вовремя: Модус забрал бюджет и офис вместе с ним.',

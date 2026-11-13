@@ -1,5 +1,6 @@
 import {
   BOT_FOLLOW_CHANCE,
+  BOT_HONK_NOTICE,
   BOT_HUNCH_CHANCE,
   BOT_IDLE_VOTE_CHANCE,
   BOT_RANDOM_VOTE,
@@ -8,6 +9,8 @@ import {
   BOT_TELL_VOTE,
   BOX_SUSPECT_RANGE,
   CHAT_TEXT_MAX,
+  HONK_SEE_ANGLE,
+  HONK_SEE_RANGE,
   MEETING_RESULT,
   MEETING_SEAT_RADIUS,
   MEETING_TALK,
@@ -162,7 +165,7 @@ export interface Suspicion {
   who: number;
   level: number;
   room: RoomType | null;
-  /** What was seen: a pack, the Goose diving under / climbing out of a rug, someone by a fresh box, a long neck. */
+  /** What was seen: a pack, the Goose diving under / climbing out of a rug, someone by a fresh box, a long neck or a honk. */
   deed: 'pack' | 'carpet' | 'box' | 'tell';
   /** `tell` only: how many neck stretches were noticed. */
   times?: number;
@@ -199,6 +202,36 @@ export function noteTell(state: WorldState, goose: Participant): void {
     if (roll >= BOT_TELL_NOTICE * 1000) continue;
     const s = p.brain.suspicion;
     // Seeing the deed itself outweighs any neck.
+    if (s && s.level === 2) continue;
+    const times = s && s.deed === 'tell' && s.who === goose.id ? (s.times ?? 1) + 1 : 1;
+    p.brain.suspicion = { who: goose.id, level: 1, room: roomType(state, goose.roomId), deed: 'tell', times };
+  }
+}
+
+/**
+ * Does `viewer` get to see the Goose's «га-га» bubble right now? Only from
+ * close by, in plain sight, and only whoever the Goose is turned towards.
+ */
+export function seesHonk(state: WorldState, viewer: Participant, goose: Participant): boolean {
+  if (goose.honk <= 0 || !goose.alive || goose.under !== null) return false;
+  if (viewer === goose) return true;
+  const dx = viewer.x - goose.x;
+  const dz = viewer.z - goose.z;
+  const distance = Math.hypot(dx, dz);
+  if (distance > HONK_SEE_RANGE || !canSee(state.level, viewer.x, viewer.z, goose.x, goose.z, HONK_SEE_RANGE)) return false;
+  if (distance < 1e-6) return true;
+  // Heading 0 faces +z; the viewer must stand within the cone in front of the beak.
+  const ahead = (Math.sin(goose.facing) * dx + Math.cos(goose.facing) * dz) / distance;
+  return ahead >= Math.cos(HONK_SEE_ANGLE);
+}
+
+/** The Goose honks: a bot chick it is turned towards, up close, may take note, like with the neck. */
+export function noteHonk(state: WorldState, goose: Participant): void {
+  for (const p of state.participants) {
+    if (!p.brain || p === goose || !p.alive || p.role !== 'chick' || !seesHonk(state, p, goose)) continue;
+    const roll = (((state.tick + 7) * 2654435761 + p.id * 40503 + goose.id * 977) >>> 0) % 1000;
+    if (roll >= BOT_HONK_NOTICE * 1000) continue;
+    const s = p.brain.suspicion;
     if (s && s.level === 2) continue;
     const times = s && s.deed === 'tell' && s.who === goose.id ? (s.times ?? 1) + 1 : 1;
     p.brain.suspicion = { who: goose.id, level: 1, room: roomType(state, goose.roomId), deed: 'tell', times };

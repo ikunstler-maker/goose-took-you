@@ -19,11 +19,13 @@ import {
   PACK_RANGE,
   PARTICIPANTS,
   REPORT_RANGE,
-  TELL_BUBBLE_RANGE,
   TELL_MAX,
   TELL_MIN,
-  TELL_SABOTAGE_RATE,
   SABOTAGE_COOLDOWN,
+  SABOTAGE_FIRST,
+  HONK_MAX,
+  HONK_MIN,
+  HONK_TIME,
   TELL_TIME,
   THOUGHT_TIME,
   PLAYER_RADIUS,
@@ -48,7 +50,7 @@ import {
   type Task,
   type TaskKind,
 } from './tasks';
-import { castVote, meetingTable, noteDeed, noteTell, sayLine, startMeeting, stepMeeting, type ChatKind, type Meeting } from './meeting';
+import { castVote, meetingTable, noteDeed, noteHonk, noteTell, sayLine, startMeeting, stepMeeting, type ChatKind, type Meeting } from './meeting';
 import { carpetInReach, placeCarpets, type Carpet } from './carpets';
 import { noteMet, noteSeen, type Seen } from './notes';
 import type { RoomType } from './prefabs';
@@ -111,8 +113,9 @@ export interface Participant {
   /** Goose only: seconds left of the neck stretch, and until the next one. */
   tell: number;
   tellIn: number;
-  /** Goose only: someone stands close enough to see «га-га?». */
-  tellBubble: boolean;
+  /** Goose only: seconds left of the «га-га» honk, and until the next one. */
+  honk: number;
+  honkIn: number;
   /** Goose only: chick that `pack` would take right now. */
   canPack: number | null;
   /** Vacation box that `report` would report right now. */
@@ -234,6 +237,8 @@ export type SimEvent =
   | { type: 'camerasClosed'; who: number }
   | { type: 'roomChanged'; who: number; roomId: number | null }
   | { type: 'bumped'; who: number }
+  /** «Га-га» somewhere near (x, z): heard nearby, without knowing whose it was. */
+  | { type: 'honked'; who: number; x: number; z: number }
   | { type: 'promptChanged'; who: number }
   | { type: 'taskDone'; who: number; taskId: number }
   | { type: 'boxPicked'; who: number; boxId: number }
@@ -391,7 +396,8 @@ export function createWorld(
     packCooldown: 0,
     tell: 0,
     tellIn: 0,
-    tellBubble: false,
+    honk: 0,
+    honkIn: 0,
     canPack: null,
     canReport: null,
     thought: null,
@@ -440,7 +446,7 @@ export function createWorld(
     buttonCooldown: BUTTON_COOLDOWN,
     fixPoints: findFixPoints(level),
     sabotage: null,
-    sabotageCooldown: SABOTAGE_COOLDOWN,
+    sabotageCooldown: SABOTAGE_FIRST,
     lostTo: null,
     sharedProgress: null,
     forcedRole,
@@ -541,6 +547,7 @@ function dealRoles(state: WorldState): void {
     p.role = p.id === goose ? 'goose' : 'chick';
     p.packCooldown = p.role === 'goose' ? PACK_FIRST_COOLDOWN : 0;
     p.tellIn = TELL_MIN + rng.next() * (TELL_MAX - TELL_MIN);
+    p.honkIn = HONK_MIN + rng.next() * (HONK_MAX - HONK_MIN);
   }
 }
 
@@ -919,18 +926,30 @@ function stepParticipant(state: WorldState, p: Participant, dt: number, events: 
 
   if (p.role === 'goose' && state.phase === 'play') {
     p.packCooldown = Math.max(0, p.packCooldown - dt);
+    const roll = (salt: number): number => ((state.tick * 7919 + p.id * 31 + salt) % 1000) / 1000;
     if (p.tell > 0) p.tell = Math.max(0, p.tell - dt);
-    else {
-      // A sabotage makes the Goose nervous: the neck gives it away more often.
-      p.tellIn -= dt * (state.sabotage ? TELL_SABOTAGE_RATE : 1);
+    else if (state.sabotage) {
+      // Only its own sabotage makes the Goose nervous enough for the neck to show.
+      p.tellIn -= dt;
       if (p.tellIn <= 0) {
         p.tell = TELL_TIME;
         noteTell(state, p);
-        p.tellIn = TELL_MIN + ((state.tick * 7919 + p.id * 31) % 1000) / 1000 * (TELL_MAX - TELL_MIN);
+        p.tellIn = TELL_MIN + roll(0) * (TELL_MAX - TELL_MIN);
       }
     }
-    p.tellBubble =
-      p.tell > 0 && p.under === null && state.participants.some((o) => o !== p && o.alive && Math.hypot(o.x - p.x, o.z - p.z) <= TELL_BUBBLE_RANGE);
+    if (p.honk > 0) p.honk = Math.max(0, p.honk - dt);
+    else if (p.alive) {
+      // «Га-га» slips out now and then, whatever the Goose is doing.
+      p.honkIn -= dt;
+      if (p.honkIn <= 0) {
+        p.honk = HONK_TIME;
+        p.honkIn = HONK_MIN + roll(577) * (HONK_MAX - HONK_MIN);
+        if (p.under === null) {
+          noteHonk(state, p);
+          events.push({ type: 'honked', who: p.id, x: p.x, z: p.z });
+        }
+      }
+    }
   }
 
   if (p.emotionTime === 0) {
