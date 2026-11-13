@@ -7,6 +7,7 @@ import {
   BUTTON_COOLDOWN,
   BUTTON_USES,
   GOOSE_GRACE,
+  BOT_IDLE_NOTE,
   INTERACT_RANGE,
   CHICK_COLORS,
   DIZZY_COOLDOWN,
@@ -46,6 +47,7 @@ import {
 } from './tasks';
 import { castVote, meetingTable, noteDeed, startMeeting, stepMeeting, type Meeting } from './meeting';
 import { carpetInReach, placeCarpets, type Carpet } from './carpets';
+import { noteSeen } from './notes';
 import { computeVisibility } from './vision';
 import {
   findFixPoints,
@@ -543,6 +545,7 @@ function checkWin(state: WorldState, events: SimEvent[]): void {
 
 function completeTask(state: WorldState, actor: Participant, task: Task): SimEvent[] {
   task.done = true;
+  noteSeen(state, 'task', actor);
   const events: SimEvent[] = [{ type: 'taskDone', who: actor.id, taskId: task.id }];
   // A visual task: everyone in the Lobby sees the news, which vouches for the editor.
   if (task.kind === 'news') {
@@ -594,6 +597,7 @@ function interact(state: WorldState, actor: Participant): SimEvent[] {
   }
   if (prompt.kind === 'fix') {
     const events = fixSabotage(state, actor, prompt.point);
+    if (events.length > 0) noteSeen(state, 'fixed', actor);
     if (!state.sabotage) refreshVision(state);
     return events;
   }
@@ -744,6 +748,10 @@ function stepParticipant(state: WorldState, p: Participant, dt: number, events: 
     const crossed = Math.floor(fromX * 4) !== Math.floor(p.x * 4) || Math.floor(fromZ * 4) !== Math.floor(p.z * 4);
     if (p.id === LOCAL_PLAYER && crossed) refreshVision(state);
   } else {
+    // Standing around in plain sight for a while is something bot chicks remember.
+    if (p.idleTime < BOT_IDLE_NOTE && p.idleTime + dt >= BOT_IDLE_NOTE && p.alive && p.under === null && p.activeTask === null && !p.watching && state.phase === 'play') {
+      noteSeen(state, 'idle', p);
+    }
     p.idleTime += dt;
     p.runTime = 0;
   }

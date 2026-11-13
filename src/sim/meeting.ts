@@ -1,6 +1,7 @@
 import {
   BOT_FOLLOW_CHANCE,
   BOT_HUNCH_CHANCE,
+  BOT_IDLE_VOTE_CHANCE,
   BOT_RANDOM_VOTE,
   BOX_SUSPECT_RANGE,
   MEETING_RESULT,
@@ -9,6 +10,7 @@ import {
   MEETING_VOTE,
 } from '../config';
 import { fitsIn } from './nav';
+import type { Note } from './notes';
 import type { RoomType } from './prefabs';
 import { createRng, type Rng } from './rng';
 import { canSee } from './vision';
@@ -21,7 +23,23 @@ export const SKIP_VOTE = -1;
 export type MeetingStage = 'talk' | 'vote' | 'result';
 
 /** What a bot can say; the UI turns it into text via `chat.<kind>`. */
-export type ChatKind = 'found' | 'button' | 'saw' | 'sawCarpet' | 'sus' | 'where' | 'with' | 'agree' | 'defend' | 'nothing';
+export type ChatKind =
+  | 'found'
+  | 'button'
+  | 'saw'
+  | 'sawCarpet'
+  | 'sus'
+  | 'where'
+  | 'with'
+  | 'agree'
+  | 'defend'
+  | 'nothing'
+  /** From bot notes: someone idled in plain sight, did a task, fixed a sabotage; the bot itself fixed one; vouching for the accused. */
+  | 'idle'
+  | 'sawTask'
+  | 'sawFix'
+  | 'iFixed'
+  | 'vouch';
 
 export interface ChatLine {
   who: number;
@@ -170,6 +188,8 @@ export function startMeeting(state: WorldState, caller: Participant, victim: num
     ejected: null,
     tie: false,
   };
+  // Sightings are spent at the meeting; the next one starts from a clean slate.
+  for (const p of state.participants) if (p.brain) p.brain.notes = [];
   events.push({ type: 'meetingStarted', who: caller.id, victim });
   return events;
 }
@@ -273,9 +293,20 @@ function planBots(
     } else if (s && s.level === 1 && state.participants[s.who]!.alive) {
       say(t, b.id, 'sus', s.who, s.room);
       vote(b.id, rng.next() < BOT_HUNCH_CHANCE ? s.who : SKIP_VOTE);
+    } else if (accused !== null && b.brain!.notes.some((n) => n.kind === 'task' && n.who === accused)) {
+      // It saw the accused do honest work: speaks up instead of piling on.
+      const seen = b.brain!.notes.find((n) => n.kind === 'task' && n.who === accused)!;
+      say(t, b.id, 'vouch', accused, seen.room);
+      vote(b.id, SKIP_VOTE);
     } else if (accused !== null && accused !== b.id && rng.next() < BOT_FOLLOW_CHANCE) {
       say(t, b.id, 'agree', accused);
       vote(b.id, accused);
+    } else if (noteLine(b, state) && (noteLine(b, state)!.who !== b.id || rng.next() < 0.5)) {
+      const note = noteLine(b, state)!;
+      const kind: ChatKind = note.who === b.id ? 'iFixed' : note.kind === 'idle' ? 'idle' : note.kind === 'task' ? 'sawTask' : 'sawFix';
+      say(t, b.id, kind, note.who === b.id ? null : note.who, note.room);
+      const hunch = note.kind === 'idle' && rng.next() < BOT_IDLE_VOTE_CHANCE;
+      vote(b.id, hunch ? note.who : rng.next() < BOT_RANDOM_VOTE ? randomOther(b) : SKIP_VOTE);
     } else {
       const buddy = buddies[b.id];
       if (buddy !== null && buddy !== undefined && rng.next() < 0.5) say(t, b.id, 'with', buddy);
@@ -285,6 +316,19 @@ function planBots(
     }
   }
   return plan.sort((a, b) => a.at - b.at);
+}
+
+/**
+ * The sighting a bot chick brings up: about others first (idling, then a fixed
+ * sabotage, then honest work), its own repair last; living subjects only.
+ */
+function noteLine(bot: Participant, state: WorldState): Note | null {
+  const notes = bot.brain!.notes.filter((n) => state.participants[n.who]!.alive);
+  for (const kind of ['idle', 'fixed', 'task'] as const) {
+    const note = notes.find((n) => n.kind === kind && n.who !== bot.id);
+    if (note) return note;
+  }
+  return notes.find((n) => n.kind === 'fixed') ?? null;
 }
 
 /** Records a vote; only in the voting stage, once, by the living, for the living or nobody. */
