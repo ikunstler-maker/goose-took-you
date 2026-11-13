@@ -21,6 +21,26 @@ export interface ChicksView {
   dive(who: number, x: number, z: number, action: 'in' | 'out'): void;
 }
 
+/**
+ * Gives a chick its own copies of its materials, see-through; with `glow` they
+ * also shine pale, the way spirits look. Returns the copies, to fade them later.
+ */
+export function ghostly(root: THREE.Object3D, opacity: number, glow = false): THREE.Material[] {
+  const copies: THREE.Material[] = [];
+  root.traverse((node) => {
+    const mesh = node as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const copy = (mesh.material as THREE.Material).clone();
+    copy.transparent = true;
+    copy.opacity = opacity;
+    if (glow && 'emissive' in copy) (copy as THREE.MeshLambertMaterial).emissive.setHex(0x9fb8ff).multiplyScalar(0.45);
+    mesh.material = copy;
+    mesh.castShadow = false;
+    copies.push(copy);
+  });
+  return copies;
+}
+
 /** Every participant's chick. Others are drawn only while the local player can see them. */
 export function createChicks(): ChicksView {
   const root = new THREE.Group();
@@ -37,7 +57,7 @@ export function createChicks(): ChicksView {
   const lookKey = (world: WorldState, id: number): string => {
     const p = world.participants[id]!;
     const look = shownLook(world, p, LOCAL_PLAYER);
-    return `${look.color}:${look.accessory}:${id === LOCAL_PLAYER && p.role === 'goose'}`;
+    return `${look.color}:${look.accessory}:${id === LOCAL_PLAYER && p.role === 'goose'}:${!p.alive && world.phase === 'play'}`;
   };
 
   /** (Re)builds one participant's chick in the look the local player sees on it. */
@@ -49,18 +69,9 @@ export function createChicks(): ChicksView {
     const unmasked = id === LOCAL_PLAYER && p.role === 'goose';
     const look = shownLook(world, p, LOCAL_PLAYER);
     const view = createChick(CHICK_COLORS[look.color], ACCESSORIES[look.accessory], unmasked);
-    if (unmasked) {
-      // Its own copies of the materials, so it can fade while invisible without fading anyone else.
-      ghost = [];
-      view.root.traverse((node) => {
-        const mesh = node as THREE.Mesh;
-        if (!mesh.isMesh) return;
-        const copy = (mesh.material as THREE.Material).clone();
-        copy.transparent = true;
-        mesh.material = copy;
-        ghost.push(copy);
-      });
-    }
+    // A spirit glows pale and see-through; the player's own Goose gets copies it can fade while invisible.
+    if (!p.alive && world.phase === 'play') ghostly(view.root, 0.6, true);
+    else if (unmasked) ghost = ghostly(view.root, 1);
     if (old) view.root.position.copy(old.root.position);
     root.add(view.root);
     views[id] = view;
@@ -90,8 +101,13 @@ export function createChicks(): ChicksView {
         // Packed chicks sit inside their box and are not drawn; an invisible Goose is not drawn for others,
         // and flickers back in while it shimmers.
         const flicker = p.shimmer > 0 && Math.sin(time * 48) < 0;
-        view.root.visible =
-          p.alive && p.under === null && (own || (p.vanish <= 0 && !flicker && world.sight[LOCAL_PLAYER]!.cells[cell] === 1));
+        const inSight = world.sight[LOCAL_PLAYER]!.cells[cell] === 1;
+        // Two worlds in one office: spirits see spirits, the living see the living; the Holy Farmer sees both.
+        const spiritView = !self.alive && world.phase === 'play';
+        const seesLiving = !spiritView || world.farmer === LOCAL_PLAYER;
+        view.root.visible = p.alive
+          ? p.under === null && (own || (seesLiving && p.vanish <= 0 && !flicker && inSight))
+          : spiritView && (own || inSight);
         if (own && ghost.length > 0) {
           const opacity = p.vanish > 0 ? 0.3 : 1;
           for (const m of ghost) m.opacity = opacity;
@@ -132,7 +148,7 @@ export function createChicks(): ChicksView {
         }
         if (p.id === LOCAL_PLAYER) {
           halo.position.set(p.x, 0.035, p.z);
-          halo.visible = p.alive;
+          halo.visible = p.alive || world.phase === 'play';
         }
       });
     },

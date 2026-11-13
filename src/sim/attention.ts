@@ -18,6 +18,7 @@ export const SEEN = {
   vanish: 13,
   rustle: 17,
   feather: 31,
+  carry: 37,
 } as const;
 
 /** Angle between where `p` faces and the direction to (x, z), degrees, 0..180. */

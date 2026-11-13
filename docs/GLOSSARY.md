@@ -92,6 +92,10 @@
 | Перо | улика Діпфейку: біле перо з жовтою фарбою на підлозі | `Feather`, `WorldState.feathers`, `FEATHER_TIME` |
 | Кущ трусився | улика Інкогніто: рослина в горщику хитається | `Rustle`, `WorldState.rustles`, подія `rustled`, `RUSTLE_*` |
 | Увага ботів | шанс, що бот помітить подію в полі зору, за кутом від погляду | `attentionChance`, `notices`, `src/sim/attention.ts`, `ATTN_*` |
+| Царство духів, дух | де грають вибулі: крізь стіни, без живих, із сяйвом | `!Participant.alive` у грі, `spiritWalk`, `spiritSight`, `stepSpirit*`, `src/sim/spirits.ts`, `SPIRIT_*`, `Stage.setSpirit` |
+| Бот-дух | мешканець царства духів з першої секунди | `SpiritBot`, `WorldState.spirits`, `SPIRIT_BOTS`, `src/render/spirits.ts` |
+| Святий Фармер, Антибан-щит | перше запаковане курча; кладе невидимий щит на живого | `WorldState.farmer`, `Participant.shield`, `castShield`, події `shielded`, `shieldPopped`, `SHIELD_*` |
+| Перенесення коробки | Гусь несе коробку «ГАРЯЧА ВІДПУСТКА» | підказка `drop`, подія `boxDropped`, `noteCarry`, `CARRY_*` |
 | Мережа килимків | 2–3 килимки, між якими можна переповзати | `Carpet.net`, `Carpet.links` |
 | Під килимком | Гусь схований: його ніхто не бачить, огляд 4 м | `Participant.under`, команди `interact` / `crawl` |
 | Лабораторія Гемблінгу | кімната зі слот-автоматами; сатира, без грошей | `RoomType: 'gambling'`, `slotMachine`, `bigWinSign` |

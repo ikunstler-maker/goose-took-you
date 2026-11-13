@@ -83,8 +83,10 @@ describe('meetings', () => {
     applyCommand(state, LOCAL_PLAYER, { type: 'pack' });
     const reporter = state.participants[4]!;
     reporter.brain = null;
-    reporter.x = victim.x;
-    reporter.z = victim.z + 0.8;
+    // The victim is a spirit elsewhere by now; its box stays where it was packed.
+    const box = state.boxes.find((b) => b.inside === victim.id)!;
+    reporter.x = box.x;
+    reporter.z = box.z + 0.8;
     step(state, TICK);
     const events = applyCommand(state, reporter.id, { type: 'report' });
     expect(events).toContainEqual({ type: 'meetingStarted', who: reporter.id, victim: victim.id });

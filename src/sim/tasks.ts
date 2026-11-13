@@ -64,6 +64,8 @@ export interface Task {
   started: boolean;
   /** News only: seconds left to press the Giant Green Button; 0 when the edit is not waiting for it. */
   rush: number;
+  /** Done by its owner as a spirit, after it was out of the match: shown as done, never counted. */
+  ghostDone?: boolean;
 }
 
 export function findStations(level: Level): Station[] {

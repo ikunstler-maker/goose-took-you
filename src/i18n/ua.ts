@@ -388,6 +388,17 @@ export const ua = {
   'say.kind.sawVanish': 'Зникло!',
   'say.kind.feather': 'Знайшло перо…',
   'say.kind.rustle': 'Рослина трусилась…',
+  'hud.shielded': 'Щит на «{color}»: 12 с недоторканності',
+  'hud.shieldPoppedYou': 'Коробка лусне! На курчаті був щит',
+  'hud.shieldSavedYou': 'Хтось хотів вас запакувати — але коробка лопнула конфеті!',
+  'hud.drop': '{key} — поставити коробку',
+  'hud.spiritYou': 'Ви в царстві духів: ходіть крізь стіни й робіть свої мініігри — живим вони вже не зараховуються. Живих ви не бачите',
+  'hud.farmerYou': 'Ви — Святий Фармер! Лише ви бачите живих: {key} біля когось — невидимий щит на 12 с',
+  'job.farmer': 'Святий Фармер',
+  'skill.farmer': 'Антибан-щит',
+  'task.ghostDone': '{task} · у царстві духів',
+  'chat.sawCarry': 'Бачу на власні очі: «{about}» несе коробку «ГАРЯЧА ВІДПУСТКА»! Місце: {room}.',
+  'say.kind.sawCarry': 'Несло відпустку!',
 } as const;
 
 export type I18nKey = keyof typeof ua;

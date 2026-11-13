@@ -6,6 +6,7 @@ import { createBoxes } from './render/boxes';
 import { createBroadcast, type BroadcastView } from './render/broadcast';
 import { createConfetti } from './render/confetti';
 import { createTricks } from './render/tricks';
+import { createSpirits } from './render/spirits';
 import { createCarpets, type CarpetsView } from './render/carpets';
 import { createChicks } from './render/chicks';
 import { createTaskMarkers, type TaskMarkers } from './render/markers';
@@ -56,6 +57,8 @@ const boxes = createBoxes();
 stage.scene.add(boxes.root);
 const tricks = createTricks();
 stage.scene.add(tricks.root);
+const spiritsView = createSpirits();
+stage.scene.add(spiritsView.root);
 
 let world: WorldState;
 let office: OfficeView | null = null;
@@ -77,6 +80,7 @@ function randomSeed(): number {
 
 function rebuildOffice(): void {
   tricks.reset();
+  spiritsView.reset();
   if (office) {
     stage.scene.remove(office.root);
     office.dispose();
@@ -226,6 +230,12 @@ function hear(event: SimEvent): void {
     if (gain > 0) sound.play('modem', gain);
   }
   if (event.type === 'rustled') sound.play('rustle', loudness(event.x, event.z));
+  if (event.type === 'shieldPopped') {
+    if (event.victim === LOCAL_PLAYER) hud.shout('hud.shieldSavedYou');
+    // The box bursts into confetti before everyone's eyes.
+    confetti.burst(event.x, event.z);
+    sound.play('splash', event.victim === LOCAL_PLAYER ? 1 : loudness(event.x, event.z));
+  }
   if (event.type === 'newsLaunched') {
     // Confetti and cheers reach whoever is close enough to see the button.
     confetti.burst(event.x, event.z);
@@ -404,6 +414,17 @@ function handle(events: SimEvent[]): void {
       }
       case 'vanished':
         hud.shout('hud.vanishYou', { seconds: VANISH_TIME });
+        break;
+      case 'shielded':
+        sound.play('fixed', 0.6);
+        hud.shout('hud.shielded', { color: t(`look.color.${world.participants[event.target]!.color}` as I18nKey) });
+        break;
+      case 'shieldPopped':
+        hud.shout('hud.shieldPoppedYou');
+        break;
+      case 'boxDropped':
+        sound.play('knock');
+        hud.setTasks(world);
         break;
       case 'bumped':
       case 'sabotageFixed':
@@ -724,6 +745,9 @@ function frame(now: number): void {
   markers?.update(time);
   boxes.update(world, time);
   tricks.update(world, time, dt);
+  spiritsView.update(world, time, dt);
+  // Out of the match: the office glows, shimmers and sparkles.
+  stage.setSpirit(!player.alive && world.phase === 'play' ? 1 : 0, dt);
   broadcast?.update(world.broadcast, time);
   confetti.update(dt);
   carpets?.update(world, time, dt);

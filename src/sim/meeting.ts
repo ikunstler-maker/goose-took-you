@@ -10,6 +10,9 @@ import {
   BOT_TELL_SURE,
   BOT_TELL_VOTE,
   BOX_SUSPECT_RANGE,
+  ATTN_GLANCE,
+  CARRY_LABEL_RANGE,
+  TICK,
   CHAT_TEXT_MAX,
   HONK_SEE_ANGLE,
   HONK_SEE_RANGE,
@@ -36,6 +39,7 @@ import { notices, SEEN } from './attention';
 import { canSee } from './vision';
 import { endSabotage, sightRadius } from './sabotage';
 import { endTricks, shownId, unseen } from './roulette';
+import { becomeSpirit } from './spirits';
 import type { Participant, SimEvent, WorldState } from './world';
 
 /** A vote for nobody. */
@@ -73,6 +77,8 @@ export type ChatKind =
   | 'sawVanish'
   | 'feather'
   | 'rustle'
+  /** Saw someone carry a «ГАРЯЧА ВІДПУСТКА» box. */
+  | 'sawCarry'
   /** Quick reports only a human makes: met someone somewhere, a plain suspicion, a plain word for someone. */
   | 'sawIn'
   | 'suspect'
@@ -106,6 +112,7 @@ export const CHAT_NEEDS: Record<ChatKind, { about: boolean; room: boolean }> = {
   sawVanish: { about: true, room: true },
   feather: { about: false, room: true },
   rustle: { about: false, room: true },
+  sawCarry: { about: true, room: true },
   sawIn: { about: true, room: true },
   suspect: { about: true, room: false },
   trust: { about: true, room: false },
@@ -116,10 +123,10 @@ export const CHAT_NEEDS: Record<ChatKind, { about: boolean; room: boolean }> = {
 const SAYABLE: ReadonlySet<ChatKind> = new Set<ChatKind>([
   'saw', 'sawCarpet', 'sus', 'where', 'with', 'agree', 'defend', 'nothing',
   'idle', 'sawTask', 'sawFix', 'iFixed', 'vouch', 'sawIn', 'suspect', 'trust',
-  'pixel', 'sysadmin', 'sysadminLie', 'tablet', 'sawMorph', 'sawVanish', 'feather', 'rustle',
+  'pixel', 'sysadmin', 'sysadminLie', 'tablet', 'sawMorph', 'sawVanish', 'feather', 'rustle', 'sawCarry',
 ]);
 /** Claims that pull bot votes towards the named participant, hard and soft; and away from it. */
-const HARD_CLAIMS: ReadonlySet<ChatKind> = new Set<ChatKind>(['saw', 'sawCarpet', 'pixel', 'sysadminLie', 'sawMorph', 'sawVanish']);
+const HARD_CLAIMS: ReadonlySet<ChatKind> = new Set<ChatKind>(['saw', 'sawCarpet', 'pixel', 'sysadminLie', 'sawMorph', 'sawVanish', 'sawCarry']);
 const SOFT_CLAIMS: ReadonlySet<ChatKind> = new Set<ChatKind>(['sus', 'suspect', 'idle']);
 const VOUCHES: ReadonlySet<ChatKind> = new Set<ChatKind>(['trust', 'vouch', 'sawTask', 'sawFix', 'with']);
 
@@ -134,6 +141,7 @@ const SEEN_LINE: Record<SeenKind, ChatKind> = {
   pixel: 'pixel',
   morph: 'sawMorph',
   vanish: 'sawVanish',
+  carry: 'sawCarry',
 };
 
 export interface ChatLine {
@@ -192,7 +200,7 @@ export interface Suspicion {
   level: number;
   room: RoomType | null;
   /** What was seen: a pack, someone diving under / climbing out of a rug, someone by a fresh box, a long neck or a honk, the Analyst's pixel at a pack. */
-  deed: 'pack' | 'carpet' | 'box' | 'tell' | 'pixel' | 'morph' | 'vanish';
+  deed: 'pack' | 'carpet' | 'box' | 'tell' | 'pixel' | 'morph' | 'vanish' | 'carry';
   /** `tell` only: how many neck stretches were noticed. */
   times?: number;
 }
@@ -267,6 +275,30 @@ export function noteHonk(state: WorldState, goose: Participant): void {
     const who = shownId(goose);
     const times = s && s.deed === 'tell' && s.who === who ? (s.times ?? 1) + 1 : 1;
     p.brain.suspicion = { who, level: 1, room: roomType(state, goose.roomId), deed: 'tell', times };
+  }
+}
+
+/**
+ * The Goose carries a vacation box: whoever comes close enough reads the sticker.
+ * Bots that pay attention are as sure as if they saw the pack.
+ */
+export function noteCarry(state: WorldState): void {
+  const glance = Math.floor(state.tick / Math.round(ATTN_GLANCE / TICK));
+  for (const g of state.participants) {
+    if (g.carrying === null || !g.alive) continue;
+    if (!state.boxes.some((b) => b.id === g.carrying && b.kind === 'vacation')) continue;
+    const who = shownId(g);
+    const room = roomType(state, g.roomId);
+    for (const p of state.participants) {
+      if (p === g || !p.alive || p.role !== 'chick' || Math.hypot(p.x - g.x, p.z - g.z) > CARRY_LABEL_RANGE) continue;
+      if (!canSee(state.level, p.x, p.z, g.x, g.z, sightRadius(state))) continue;
+      if (!p.brain) {
+        remember(p, 'carry', who, room);
+        continue;
+      }
+      if (p.brain.suspicion?.level === 2 && p.brain.suspicion.deed === 'pack') continue;
+      if (notices(p, g.x, g.z, glance, SEEN.carry)) p.brain.suspicion = { who, level: 2, room, deed: 'carry' };
+    }
   }
 }
 
@@ -353,6 +385,10 @@ export function startMeeting(state: WorldState, caller: Participant, victim: num
   state.rustles = [];
   // Vacation boxes are taken away; whatever someone carried stays in their wings.
   state.boxes = state.boxes.filter((b) => b.kind !== 'vacation');
+  for (const p of state.participants) {
+    if (p.carrying !== null && !state.boxes.some((b) => b.id === p.carrying)) p.carrying = null;
+    p.shield = 0;
+  }
   seat(state);
 
   state.phase = 'meeting';
@@ -507,7 +543,8 @@ function planBots(
       const chance = s.who === accused && claimed && !realAdmin ? BOT_CARPET_CLAIMED : BOT_CARPET_VOTE;
       vote(b.id, rng.next() < chance ? s.who : SKIP_VOTE);
     } else if (s && s.level === 2 && state.participants[s.who]!.alive) {
-      const line: ChatKind = s.deed === 'pixel' ? 'pixel' : s.deed === 'morph' ? 'sawMorph' : s.deed === 'vanish' ? 'sawVanish' : 'saw';
+      const line: ChatKind =
+        s.deed === 'pixel' ? 'pixel' : s.deed === 'morph' ? 'sawMorph' : s.deed === 'vanish' ? 'sawVanish' : s.deed === 'carry' ? 'sawCarry' : 'saw';
       say(t, b.id, line, s.who, s.room);
       vote(b.id, s.who, true);
     } else if (s && s.deed === 'tell' && state.participants[s.who]!.alive) {
@@ -565,7 +602,7 @@ function noteLine(bot: Participant, state: WorldState): Note | null {
 /** Ready-made lines for a human: the gravest sightings first, then its own whereabouts. */
 function hintsFor(state: WorldState, p: Participant, room: RoomType | null): ChatLine[] {
   if (p.brain || !p.alive) return [];
-  const order: SeenKind[] = ['pack', 'morph', 'vanish', 'pixel', 'carpet', 'idle', 'fixed', 'task', 'met'];
+  const order: SeenKind[] = ['pack', 'carry', 'morph', 'vanish', 'pixel', 'carpet', 'idle', 'fixed', 'task', 'met'];
   const lines: ChatLine[] = [];
   for (const kind of order) {
     for (const n of p.seen) {
@@ -760,6 +797,7 @@ export function stepMeeting(state: WorldState, dt: number, send: (who: number, v
         out.alive = false;
         out.ejected = true;
         out.outAt = state.tick;
+        becomeSpirit(state, out);
         out.canPack = null;
         out.canReport = null;
         out.prompt = null;
