@@ -13,8 +13,10 @@ export function createCurveView(ctx: MinigameContext): MinigameView {
   const state = createCurve(ctx.seed);
   const shell = createCanvasShell(ctx.body, 'curve', W, H);
   const { g } = shell;
-  const toPx = (h: Handle): { x: number; y: number } => ({ x: PAD + h.x * (W - 2 * PAD), y: H - PAD - h.y * (H - 2 * PAD) });
-  const fromPx = (x: number, y: number): Handle => ({ x: (x - PAD) / (W - 2 * PAD), y: (H - PAD - y) / (H - 2 * PAD) });
+  // A flipped graph draws the value axis downwards; the logic never knows.
+  const vy = (y: number): number => (state.flipped ? 1 - y : y);
+  const toPx = (h: Handle): { x: number; y: number } => ({ x: PAD + h.x * (W - 2 * PAD), y: H - PAD - vy(h.y) * (H - 2 * PAD) });
+  const fromPx = (x: number, y: number): Handle => ({ x: (x - PAD) / (W - 2 * PAD), y: vy((H - PAD - y) / (H - 2 * PAD)) });
   let dragging: number | null = null;
   let won = false;
 
@@ -61,7 +63,7 @@ export function createCurveView(ctx: MinigameContext): MinigameView {
   };
 
   function draw(): void {
-    shell.goal.textContent = t('minigame.curve.goal');
+    shell.goal.textContent = state.rebriefed ? t('minigame.curve.rebrief') : state.flipped ? t('minigame.curve.goalFlipped') : t('minigame.curve.goal');
     g.fillStyle = '#23262f';
     g.fillRect(0, 0, W, H);
     g.strokeStyle = '#363a46';

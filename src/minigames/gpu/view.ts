@@ -1,8 +1,7 @@
-import { GPU_HOLD_TIME, GPU_ZONE_HIGH, GPU_ZONE_LOW } from '../../config';
 import { t } from '../../i18n';
 import { createCanvasShell } from '../canvas';
 import type { MinigameContext, MinigameView } from '../types';
-import { createGpu, inZone, tickGpu } from './logic';
+import { createGpu, inZone, tickGpu, zone } from './logic';
 
 const W = 360;
 const H = 300;
@@ -38,7 +37,7 @@ export function createGpuView(ctx: MinigameContext): MinigameView {
   window.addEventListener('keyup', onKey);
 
   function draw(): void {
-    shell.goal.textContent = t('minigame.gpu.goal', { seconds: GPU_HOLD_TIME });
+    shell.goal.textContent = t(state.drift > 0 ? 'minigame.gpu.goalDrift' : 'minigame.gpu.goal', { seconds: state.holdTime });
     fan.textContent = t('minigame.gpu.fan');
     fan.classList.toggle('on', fanOn);
     g.fillStyle = '#23262f';
@@ -51,8 +50,9 @@ export function createGpuView(ctx: MinigameContext): MinigameView {
     g.fillStyle = '#3a3f4c';
     g.fillRect(tx, top, 36, bottom - top);
     g.fillStyle = 'rgba(123, 224, 90, 0.45)';
-    g.fillRect(tx - 8, y(GPU_ZONE_HIGH), 52, y(GPU_ZONE_LOW) - y(GPU_ZONE_HIGH));
-    g.fillStyle = inZone(state.temp) ? '#7be05a' : state.temp > GPU_ZONE_HIGH ? '#ff4b3e' : '#3fc3ff';
+    const { low, high } = zone(state);
+    g.fillRect(tx - 8, y(high), 52, y(low) - y(high));
+    g.fillStyle = inZone(state) ? '#7be05a' : state.temp > high ? '#ff4b3e' : '#3fc3ff';
     g.fillRect(tx + 6, y(state.temp), 24, bottom - y(state.temp));
     // Fan.
     const cx = 230;
@@ -77,7 +77,7 @@ export function createGpuView(ctx: MinigameContext): MinigameView {
     g.fillStyle = '#3a3f4c';
     g.fillRect(150, 240, 160, 16);
     g.fillStyle = '#7be05a';
-    g.fillRect(150, 240, (160 * Math.min(state.held, GPU_HOLD_TIME)) / GPU_HOLD_TIME, 16);
+    g.fillRect(150, 240, (160 * Math.min(state.held, state.holdTime)) / state.holdTime, 16);
     shell.status.textContent = t('minigame.gpu.temp', { degrees: Math.round(40 + state.temp * 60) });
   }
 
