@@ -882,6 +882,8 @@ button:hover {
   border-radius: 16px;
   background: var(--panel);
   box-shadow: 0 6px 24px rgba(90, 60, 10, 0.25);
+  max-height: calc(100vh - 140px);
+  overflow-y: auto;
 }
 
 #lobby[hidden] {
@@ -932,6 +934,69 @@ button:hover {
   margin-top: 14px;
   padding: 12px;
   font-size: 16px;
+}
+
+#lobby .swatch:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+#lobby .lobby-start:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.lobby-online {
+  margin-top: 12px;
+  padding-top: 4px;
+  border-top: 2px dashed rgba(58, 42, 20, 0.2);
+}
+
+.lobby-online[hidden],
+.lobby-online [hidden] {
+  display: none;
+}
+
+.online-status {
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.online-out,
+.online-in {
+  display: grid;
+  gap: 8px;
+}
+
+.online-join {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.online-code {
+  min-width: 0;
+  padding: 8px 10px;
+  font: inherit;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  text-align: center;
+  color: inherit;
+  border: 2px solid var(--ink);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.online-room {
+  font-size: 22px;
+  letter-spacing: 0.12em;
+  text-align: center;
+}
+
+.lobby-online button {
+  padding: 8px 10px;
 }
 
 /* Match: role card, packed banner, game over */

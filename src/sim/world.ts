@@ -188,6 +188,8 @@ export interface WorldState {
   sabotageCooldown: number;
   /** The sabotage that ran out and won the match for the Goose, or null. */
   lostTo: SabotageKind | null;
+  /** Online browser copy only: the shared task progress as told by the server; null where the match itself runs. */
+  sharedProgress: number | null;
   /** Debug/testing: the local player's role at the start instead of a random one. */
   forcedRole: Role | null;
   tick: number;
@@ -267,8 +269,15 @@ export interface Sight {
   version: number;
 }
 
-/** The seat of the human on this device in a local match. Online, every client has its own seat. */
-export const LOCAL_PLAYER = 0;
+/**
+ * The seat of the human on this device: 0 in a local match. Online, the browser
+ * sets it to the seat the server gave it; the server itself never reads it.
+ */
+export let LOCAL_PLAYER = 0;
+
+export function setLocalSeat(seat: number): void {
+  LOCAL_PLAYER = seat;
+}
 
 export function me(state: WorldState): Participant {
   return state.participants[LOCAL_PLAYER]!;
@@ -433,6 +442,7 @@ export function createWorld(
     sabotage: null,
     sabotageCooldown: SABOTAGE_COOLDOWN,
     lostTo: null,
+    sharedProgress: null,
     forcedRole,
     tick: 0,
   };
@@ -590,6 +600,7 @@ const VACATION_BOX_BASE = 10_000;
  * of packed chicks drop out, so the bar can still be filled by the rest.
  */
 export function progress(state: WorldState): number {
+  if (state.sharedProgress !== null) return state.sharedProgress;
   let done = 0;
   let total = 0;
   for (const task of state.tasks) {
