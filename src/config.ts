@@ -64,12 +64,14 @@ export const MODUS_CHAOS_PER_STICKER = 2.2;
 /** Chaos drained when a sticker is closed, percent. */
 export const MODUS_CHAOS_RELIEF = 3;
 export const MODUS_MAX_STICKERS = 9;
+/** Share of special edits in a round is rolled between these; a round favours one special kind. */
+export const MODUS_SPECIAL_MIN = 0.25;
+export const MODUS_SPECIAL_MAX = 0.5;
+/** A runaway edit drifts at this speed, board widths per second. */
+export const MODUS_RUNNER_SPEED = 0.16;
 /** Pause after losing before a new round starts, seconds. */
 export const MODUS_RETRY_DELAY = 1.5;
 
-/** Mini-game «Креатив один в один»: wires (nodes per side) and switches. */
-export const COPYCAT_WIRES = 4;
-export const COPYCAT_SWITCHES = 3;
 /** How long the "Done!" banner stays before a won mini-game closes, seconds. */
 export const MINIGAME_DONE_PAUSE = 0.9;
 /** Height of the task arrows above stations, metres. */
@@ -300,13 +302,8 @@ export const SHADOW_MAP = 4096;
 export const PORTRAIT_FIT = 0.85;
 
 // Stage 6 mini-games.
-/** «Крива в Graph Editor»: largest allowed handle distance from the target, in curve units (0..1). */
-export const CURVE_TOLERANCE = 0.06;
 /** Starting handles are at least this far from the target. */
 export const CURVE_MIN_START_OFFSET = 0.25;
-/** «Охолоди GPU»: temperature scale is 0..1; green zone bounds. */
-export const GPU_ZONE_LOW = 0.4;
-export const GPU_ZONE_HIGH = 0.6;
 export const GPU_START_TEMP = 0.9;
 /** Heating per second while the fan is off; cooling per second while it is held. */
 export const GPU_HEAT_RATE = 0.22;
@@ -314,8 +311,6 @@ export const GPU_COOL_RATE = 0.32;
 /** Random load spikes: chance per second and size. */
 export const GPU_SPIKE_CHANCE = 0.6;
 export const GPU_SPIKE = 0.08;
-/** Continuous seconds in the green zone that cool the card. */
-export const GPU_HOLD_TIME = 4;
 /** «Занос на 777»: reel symbols, starting speed (symbols per second), slowdown per miss, floor speed. */
 export const SLOT_SYMBOLS = 8;
 /** Starting reel speed is rolled per round between these, symbols per second. */
@@ -369,3 +364,29 @@ export const PLAYER_HINTS_MAX = 4;
 export const PLAYER_HINTS_MET = 2;
 /** «Saw X in room Y» is refreshed every this many ticks. */
 export const PLAYER_MET_EVERY = 10;
+
+// Per-round variety of the older mini-games.
+/** «Креатив один в один»: wires and switches are rolled per round within these. */
+export const COPYCAT_WIRES_MIN = 3;
+export const COPYCAT_WIRES_MAX = 5;
+export const COPYCAT_SWITCHES_MIN = 2;
+export const COPYCAT_SWITCHES_MAX = 4;
+/** Chance the reference is drawn in one colour (trace the wires), and that the competitor updates it once mid-way. */
+export const COPYCAT_MONO_CHANCE = 0.35;
+export const COPYCAT_UPDATE_CHANCE = 0.35;
+/** «Крива в Graph Editor»: tolerance is rolled between these; chance of a flipped value axis and of a changed brief. */
+export const CURVE_TOLERANCE_MIN = 0.045;
+export const CURVE_TOLERANCE_MAX = 0.07;
+export const CURVE_FLIP_CHANCE = 0.3;
+export const CURVE_REBRIEF_CHANCE = 0.3;
+/** «Охолоди GPU»: green zone width and centre, hold time, rate scale and drift are rolled per round. */
+export const GPU_ZONE_WIDTH_MIN = 0.14;
+export const GPU_ZONE_WIDTH_MAX = 0.26;
+export const GPU_ZONE_CENTRE_MIN = 0.35;
+export const GPU_ZONE_CENTRE_MAX = 0.65;
+export const GPU_HOLD_MIN = 3;
+export const GPU_HOLD_MAX = 5;
+export const GPU_RATE_SPREAD = 0.25;
+export const GPU_DRIFT_CHANCE = 0.4;
+export const GPU_DRIFT_AMPLITUDE = 0.1;
+export const GPU_DRIFT_PERIOD = 6;

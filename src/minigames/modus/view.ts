@@ -53,15 +53,15 @@ export function createModusView(ctx: MinigameContext): MinigameView {
     dragging = null;
     el.classList.remove('drag');
     bin.classList.remove('hot');
-    if (overBin(event)) closeSticker(state, id);
+    if (overBin(event)) closeSticker(state, id, 'bin');
     draw();
   };
   window.addEventListener('pointermove', onMove);
   window.addEventListener('pointerup', onUp);
 
-  const makeSticker = (id: number, tilt: number): HTMLElement => {
+  const makeSticker = (id: number, tilt: number, kind: string): HTMLElement => {
     const el = document.createElement('div');
-    el.className = 'modus-sticker';
+    el.className = `modus-sticker ${kind}`;
     el.style.setProperty('--tilt', `${tilt}deg`);
     const text = document.createElement('span');
     const cross = document.createElement('button');
@@ -69,7 +69,7 @@ export function createModusView(ctx: MinigameContext): MinigameView {
     cross.textContent = '×';
     cross.addEventListener('pointerdown', (event) => event.stopPropagation());
     cross.addEventListener('click', () => {
-      closeSticker(state, id);
+      if (!closeSticker(state, id, 'cross')) ctx.sound('click');
       draw();
     });
     el.append(text, cross);
@@ -109,13 +109,17 @@ export function createModusView(ctx: MinigameContext): MinigameView {
     for (const sticker of state.stickers) {
       let el = elements.get(sticker.id);
       if (!el) {
-        el = makeSticker(sticker.id, sticker.tilt);
+        el = makeSticker(sticker.id, sticker.tilt, sticker.kind);
         ctx.sound('sticker');
         elements.set(sticker.id, el);
-        // Clamped so a note never hangs over the edge of a narrow phone board.
+      }
+      if (dragging?.id !== sticker.id) {
+        // Clamped so a note never hangs over the edge of a narrow phone board; runners keep moving.
         el.style.left = `clamp(4px, calc(${sticker.x * 100}% - 80px), calc(100% - 164px))`;
         el.style.top = `clamp(4px, calc(${sticker.y * 100}% - 34px), calc(100% - 72px))`;
       }
+      el.classList.toggle('half', sticker.kind === 'urgent' && sticker.hits === 1);
+      el.dataset.badge = sticker.kind === 'plain' ? '' : t(`minigame.modus.kind.${sticker.kind}` as I18nKey);
       el.firstElementChild!.textContent = t(`minigame.modus.note${sticker.note}` as I18nKey);
     }
     // The winning sticker is closed by input, not by a tick, so the check lives here.
