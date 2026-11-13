@@ -8,6 +8,7 @@ import {
   PLAYER_RADIUS,
   ROOM_FILL_DENSITY,
   ROOM_MAX,
+  LOBBY_SECTOR,
   SECTORS,
 } from '../config';
 import {
@@ -181,7 +182,6 @@ function makeShape(rng: Rng, lobby: boolean): Shape {
 function placeRooms(b: Build): Room[] {
   const { n, rng } = b;
   const sector = Math.floor(n / SECTORS);
-  const centre = (SECTORS - 1) / 2;
   const types = rng.shuffle(SHUFFLED_ROOMS);
   const rooms: Room[] = [];
 
@@ -197,7 +197,7 @@ function placeRooms(b: Build): Room[] {
 
   for (let row = 0; row < SECTORS; row++) {
     for (let col = 0; col < SECTORS; col++) {
-      const lobby = col === centre && row === centre;
+      const lobby = row * SECTORS + col === LOBBY_SECTOR;
       const type: RoomType = lobby ? 'lobby' : types.pop()!;
       const shape = makeShape(rng, lobby);
       const x0 = offset(col, shape.w);

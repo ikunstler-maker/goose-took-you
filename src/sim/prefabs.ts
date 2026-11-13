@@ -12,7 +12,9 @@ export type RoomType =
   | 'motion'
   | 'meeting'
   | 'lounge'
-  | 'greenhouse';
+  | 'greenhouse'
+  | 'gambling'
+  | 'security';
 
 export type PropKind =
   | 'desk'
@@ -57,7 +59,11 @@ export type PropKind =
   | 'cactus'
   | 'crates'
   | 'ringLight'
-  | 'briefTablet';
+  | 'briefTablet'
+  | 'slotMachine'
+  | 'bigWinSign'
+  | 'cameraDesk'
+  | 'badgeScanner';
 
 /** Quarter turns: 0 = front faces south (+z), 1 = east, 2 = north, 3 = west. */
 export type Rot = 0 | 1 | 2 | 3;
@@ -193,10 +199,39 @@ export const PREFABS: Record<RoomType, PrefabProp[]> = {
     p('ficus', 2.6, -2.4, 0.8, 0.8),
     p('monstera', -2.6, 2.4, 0.8, 0.8),
   ],
+  gambling: [
+    p('bigWinSign', 0, -5.6, 4, 0.3),
+    p('slotMachine', -3.6, -4.8, 1.2, 1),
+    p('slotMachine', 3.6, -4.8, 1.2, 1),
+    p('slotMachine', -5, 2.6, 1.2, 1, 1),
+    p('arcade', 5, 2.6, 0.9, 0.9, 3),
+    p('stool', -3.6, -3.7, 0.5, 0.5),
+    p('stool', 3.6, -3.7, 0.5, 0.5),
+    p('stool', -3.9, 2.6, 0.5, 0.5),
+    p('palm', -5, 5, 0.9, 0.9),
+    p('monstera', 5, 5, 0.8, 0.8),
+  ],
+  security: [
+    p('cameraDesk', -2.6, -4.9, 3.6, 1.2),
+    p('stool', -2.6, -3.7, 0.5, 0.5),
+    p('badgeScanner', 3.8, -4.6, 1, 1),
+    p('badgeScanner', 3.8, 3, 1, 1),
+    p('lockers', -5.4, 2.6, 2, 0.6, 1),
+    p('cabinet', 5.4, -1, 1, 0.6, 3),
+    p('ficus', -5, 5, 0.8, 0.8),
+    p('cactus', 5, 5, 0.7, 0.7),
+  ],
 };
 
-/** Rooms shuffled into the non-centre slots. The lobby always takes the centre. */
+/** Rooms shuffled into the non-lobby slots; spare slots repeat green zones and storage. */
 export const SHUFFLED_ROOMS: RoomType[] = [
+  'gambling',
+  'security',
+  'greenhouse',
+  'lounge',
+  'cargo',
+  'greenhouse',
+  'lounge',
   'buying',
   'copycat',
   'news',
@@ -228,6 +263,8 @@ export const FILLERS: Record<RoomType | 'corridor', Filler[]> = {
   meeting: [f('whiteboard', 2, 0.4), f('cabinet', 1, 0.6), f('lamp', 0.5, 0.5), f('bookshelf', 2, 0.6), f('cooler', 0.6, 0.6), ...PLANTS],
   lounge: [f('sofa', 3.2, 1.1), f('arcade', 0.9, 0.9), f('beanbag', 0.9, 0.9), f('cooler', 0.6, 0.6), f('lamp', 0.5, 0.5), f('arcade', 0.9, 0.9), ...PLANTS],
   greenhouse: [f('planter', 3.3, 0.8), f('bench', 2.6, 0.8), f('palm', 0.9, 0.9), f('planter', 3.3, 0.8), ...PLANTS, ...PLANTS],
+  gambling: [f('arcade', 0.9, 0.9), f('slotMachine', 1.2, 1), f('sofa', 3.2, 1.1), f('lamp', 0.5, 0.5), f('arcade', 0.9, 0.9), ...PLANTS],
+  security: [f('lockers', 2, 0.6), f('cabinet', 1, 0.6), f('whiteboard', 2, 0.4), f('cooler', 0.6, 0.6), f('bookshelf', 2, 0.6), ...PLANTS],
   corridor: [f('bench', 2.6, 0.8), f('cooler', 0.6, 0.6), f('lockers', 2, 0.6), f('printer', 1, 0.8), f('lamp', 0.5, 0.5), ...PLANTS, ...PLANTS],
 };
 

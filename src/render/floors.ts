@@ -23,6 +23,33 @@ function planks(base: string, tones: string[], rows: number): Painter {
 }
 
 const PAINTERS: Record<RoomType | 'corridor', Painter> = {
+  // Plum casino carpet with gold diamonds.
+  gambling: (ctx, size) => {
+    ctx.fillStyle = '#7a3d6e';
+    ctx.fillRect(0, 0, size, size);
+    ctx.fillStyle = '#e8b84a';
+    const step = size / 4;
+    for (let y = 0; y < 4; y++) {
+      for (let x = 0; x < 4; x++) {
+        const cx = x * step + step / 2;
+        const cy = y * step + step / 2;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - 10);
+        ctx.lineTo(cx + 10, cy);
+        ctx.lineTo(cx, cy + 10);
+        ctx.lineTo(cx - 10, cy);
+        ctx.fill();
+      }
+    }
+  },
+  // Grey anti-static tiles.
+  security: (ctx, size) => {
+    ctx.fillStyle = '#c3cad3';
+    ctx.fillRect(0, 0, size, size);
+    ctx.strokeStyle = '#a3abb6';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(2, 2, size - 4, size - 4);
+  },
   // Warm wooden deck.
   lobby: planks('#b98a55', ['#d9aa72', '#cf9f66', '#e2b680'], 8),
   // Cosy carpet.
@@ -141,6 +168,8 @@ export const FLOOR_DENSITY: Record<RoomType | 'corridor', number> = {
   meeting: 0.34,
   lounge: 0.5,
   greenhouse: 0.25,
+  gambling: 0.34,
+  security: 0.5,
   corridor: 0.5,
 };
 

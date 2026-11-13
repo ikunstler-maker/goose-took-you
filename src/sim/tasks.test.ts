@@ -25,6 +25,14 @@ function standAt(state: WorldState, taskId: number): void {
 const taskOf = (state: WorldState, kind: TaskKind): number =>
   state.tasks.find((t) => t.kind === kind && t.owner === LOCAL_PLAYER)!.id;
 
+/** First world from seed 42 up where the local player owns a task of `kind`. */
+function worldWith(kind: TaskKind): WorldState {
+  for (let seed = 42; ; seed++) {
+    const state = createWorld(seed);
+    if (state.tasks.some((t) => t.kind === kind && t.owner === LOCAL_PLAYER)) return state;
+  }
+}
+
 describe('tasks', () => {
   it('finds hub stations for every task kind', () => {
     const state = createWorld(42);
@@ -66,7 +74,7 @@ describe('tasks', () => {
   });
 
   it('keeps the chick in place while a mini-game is open', () => {
-    const state = createWorld(42);
+    const state = worldWith('copycat');
     standAt(state, taskOf(state, 'copycat'));
     applyCommand(state, LOCAL_PLAYER, { type: 'interact' });
     const { x, z } = me(state);
@@ -89,7 +97,7 @@ describe('tasks', () => {
 
 describe('cargo', () => {
   it('is carried from the warehouse to the hinted green zone', () => {
-    const state = createWorld(42);
+    const state = worldWith('cargo');
     const id = taskOf(state, 'cargo');
     const task = state.tasks[id]!;
     expect(task.target).not.toBeNull();
@@ -116,7 +124,7 @@ describe('cargo', () => {
   });
 
   it('slips out of the wings at the rolled distance and can be picked up again', () => {
-    const state = createWorld(42);
+    const state = worldWith('cargo');
     const id = taskOf(state, 'cargo');
     standAt(state, id);
     applyCommand(state, LOCAL_PLAYER, { type: 'interact' });

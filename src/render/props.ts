@@ -284,6 +284,35 @@ function drawBrief(ctx: CanvasRenderingContext2D, w: number, h: number): void {
   }
 }
 
+function drawBigWin(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+  ctx.fillStyle = '#3b1240';
+  ctx.fillRect(0, 0, w, h);
+  ctx.strokeStyle = '#ffd34d';
+  ctx.lineWidth = h * 0.08;
+  ctx.strokeRect(h * 0.06, h * 0.06, w - h * 0.12, h - h * 0.12);
+  ctx.fillStyle = '#ffe680';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `900 ${h * 0.5}px system-ui, sans-serif`;
+  ctx.fillText(t('decor.bigWin'), w / 2, h / 2, w * 0.9);
+}
+
+function drawCameras(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+  ctx.fillStyle = '#1d2430';
+  ctx.fillRect(0, 0, w, h);
+  const tints = ['#5d8a6b', '#6b7fa6', '#a68a5d', '#8a5d7f'];
+  for (let i = 0; i < 4; i++) {
+    const x = (i % 2) * (w / 2);
+    const y = Math.floor(i / 2) * (h / 2);
+    ctx.fillStyle = tints[i]!;
+    ctx.fillRect(x + 6, y + 6, w / 2 - 12, h / 2 - 12);
+    ctx.fillStyle = '#ff4b3e';
+    ctx.beginPath();
+    ctx.arc(x + 20, y + 20, 6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
 function drawUrgent(ctx: CanvasRenderingContext2D, w: number, h: number): void {
   ctx.fillStyle = '#e5433d';
   ctx.fillRect(0, 0, w, h);
@@ -585,6 +614,51 @@ const BUILDERS: Record<PropKind, (variant: number) => THREE.Group> = {
       sphere(0.14, glow(0xff4b3e), 0, 0.5, 0.06, 1),
       box(0.08, 0.3, 0.08, METAL, 0, 0.1, 0),
       cone(0.2, 0.1, METAL, 0, 0.05, 0),
+    ),
+
+  // Satirical slot machine with a golden egg on top; no real-money mechanics.
+  slotMachine: () => {
+    const egg = sphere(0.18, glow(0xffc93d), 0, 2.05, 0, 2);
+    egg.scale.y = 1.3;
+    const g = group(
+      box(1, 1.7, 0.8, mat(0xc0304a), 0, 0.85, 0),
+      box(0.8, 0.4, 0.04, DARK, 0, 1.3, 0.41, false),
+      box(1.05, 0.2, 0.85, mat(0xffd34d), 0, 1.78, 0),
+      cylinder(0.03, 0.03, 0.5, METAL, 0.56, 1.25, 0.1, 6),
+      sphere(0.07, glow(0xff3b30), 0.56, 1.52, 0.1, 1),
+      box(0.8, 0.06, 0.3, DARK, 0, 0.95, 0.5),
+      egg,
+    );
+    for (let i = 0; i < 3; i++) g.add(box(0.22, 0.32, 0.02, mat(0xffffff, { emissive: 0xbbbbbb }), -0.26 + i * 0.26, 1.3, 0.435, false));
+    return g;
+  },
+
+  bigWinSign: () => {
+    const panel = screen(3.6, 0.9, drawBigWin, 0.9);
+    panel.position.set(0, 2, 0.08);
+    return group(box(3.8, 1.05, 0.12, DARK, 0, 2, 0), panel);
+  },
+
+  cameraDesk: () => {
+    const wall = screen(3.2, 1.2, drawCameras, 0.6);
+    wall.position.set(0, 1.75, -0.39);
+    return group(
+      box(3.6, 0.8, 1.2, mat(0x5b6577), 0, 0.4, 0),
+      box(3.7, 0.06, 1.25, DARK, 0, 0.83, 0),
+      box(3.4, 1.4, 0.1, DARK, 0, 1.75, -0.46),
+      wall,
+      box(0.6, 0.03, 0.25, WHITE, 0, 0.88, 0.3, false),
+      sphere(0.04, glow(0x4dff88), -0.8, 0.9, 0.35, 0),
+      sphere(0.04, glow(0xff3b30), -0.65, 0.9, 0.35, 0),
+    );
+  },
+
+  badgeScanner: () =>
+    group(
+      cylinder(0.5, 0.5, 0.08, mat(0x8a94a6), 0, 0.04, 0, 20),
+      box(0.18, 1.1, 0.18, METAL, 0, 0.6, -0.3),
+      box(0.4, 0.3, 0.12, DARK, 0, 1.2, -0.25),
+      box(0.3, 0.06, 0.02, glow(0x4dff88), 0, 1.25, -0.185, false),
     ),
 };
 

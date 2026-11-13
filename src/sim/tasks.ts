@@ -5,7 +5,7 @@ import { createRng } from './rng';
 import { propDistance } from './sabotage';
 
 /** Mini-game that completes a task. Folder names in `src/minigames/`. */
-export type TaskKind = 'modus' | 'copycat' | 'news' | 'cargo' | 'lines';
+export type TaskKind = 'modus' | 'copycat' | 'news' | 'cargo' | 'lines' | 'curve' | 'gpu' | 'slot' | 'badge';
 
 /** Hub furniture that hosts each task kind. */
 export const STATION_PROPS: Record<TaskKind, PropKind> = {
@@ -14,10 +14,14 @@ export const STATION_PROPS: Record<TaskKind, PropKind> = {
   news: 'dualStation',
   cargo: 'shelf',
   lines: 'briefTablet',
+  curve: 'ultrawide',
+  gpu: 'rack',
+  slot: 'slotMachine',
+  badge: 'badgeScanner',
 };
 
 /** Tasks that open a mini-game window; the rest are done in the office itself. */
-export const WINDOW_TASKS: readonly TaskKind[] = ['modus', 'copycat', 'news', 'lines'];
+export const WINDOW_TASKS: readonly TaskKind[] = ['modus', 'copycat', 'news', 'lines', 'curve', 'gpu', 'slot', 'badge'];
 
 /** Rooms a cargo box can be ordered to; the task list gives only a vague hint. */
 export const CARGO_DESTINATIONS: readonly RoomType[] = ['lounge', 'greenhouse'];
