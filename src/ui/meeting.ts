@@ -1,6 +1,7 @@
-import { CHICK_COLORS } from '../config';
+import { CHICK_COLORS, PLAYER_SAY_COOLDOWN, PLAYER_SAY_MAX } from '../config';
 import { t, type I18nKey } from '../i18n';
-import { SKIP_VOTE, type ChatLine } from '../sim/meeting';
+import { CHAT_NEEDS, SKIP_VOTE, type ChatKind, type ChatLine } from '../sim/meeting';
+import type { RoomType } from '../sim/prefabs';
 import { LOCAL_PLAYER, type WorldState } from '../sim/world';
 
 export interface MeetingView {
@@ -10,15 +11,49 @@ export interface MeetingView {
   relabel(): void;
 }
 
+/** Phrases offered in the quick-report bar, in order. */
+const PHRASES: ChatKind[] = ['where', 'sawIn', 'sawTask', 'idle', 'saw', 'suspect', 'trust', 'defend'];
+
 const hex = (color: number): string => `#${color.toString(16).padStart(6, '0')}`;
 
 /** Meeting window: chat on the left, vote cards on the right, the stage timer on top. */
-export function createMeetingView(handlers: { onVote(target: number): void }): MeetingView {
+export function createMeetingView(handlers: {
+  onVote(target: number): void;
+  onSay(kind: ChatKind, about: number | null, room: RoomType | null): void;
+}): MeetingView {
   const root = document.getElementById('meeting') as HTMLElement;
   let shown = '';
   let world: WorldState | null = null;
+  /** The quick report being put together: a phrase, then who it is about, then where. */
+  let draft: { kind: ChatKind; about: number | null } | null = null;
+
+  const say = (kind: ChatKind, about: number | null, room: RoomType | null): void => {
+    draft = null;
+    handlers.onSay(kind, about, room);
+  };
 
   root.addEventListener('click', (event) => {
+    const pick = (event.target as HTMLElement).closest('button[data-say]') as HTMLButtonElement | null;
+    if (pick && !pick.disabled && world?.meeting) {
+      pick.blur();
+      const data = pick.dataset;
+      if (data.say === 'hint') {
+        const line = world.meeting.hints[LOCAL_PLAYER]![Number(data.index)];
+        if (line) say(line.kind, line.about, line.room);
+      } else if (data.say === 'cancel') draft = null;
+      else if (data.say === 'kind') {
+        const kind = data.kind as ChatKind;
+        if (!CHAT_NEEDS[kind].about && !CHAT_NEEDS[kind].room) say(kind, null, null);
+        else draft = { kind, about: null };
+      } else if (data.say === 'about' && draft) {
+        const about = Number(data.about);
+        if (CHAT_NEEDS[draft.kind].room) draft = { kind: draft.kind, about };
+        else say(draft.kind, about, null);
+      } else if (data.say === 'room' && draft) say(draft.kind, draft.about, (data.room || null) as RoomType | null);
+      shown = '';
+      update(world);
+      return;
+    }
     const button = (event.target as HTMLElement).closest('button[data-vote]') as HTMLButtonElement | null;
     if (!button || button.disabled) return;
     button.blur();
@@ -112,9 +147,68 @@ export function createMeetingView(handlers: { onVote(target: number): void }): M
 
     const body = el('div', 'meeting-body');
     body.append(chat, cards);
-    root.append(head, body, foot);
+    root.append(head, body);
+    if (self.alive && m.stage !== 'result') root.append(sayBar(w));
+    root.append(foot);
     chat.scrollTop = chat.scrollHeight;
     tick(w);
+  };
+
+  const chip = (cls: string, text: string, data: Record<string, string>, color: number | null = null): HTMLButtonElement => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `say-chip ${cls}`;
+    Object.assign(button.dataset, data);
+    if (color !== null) {
+      const dot = el('i', 'dot');
+      dot.style.background = hex(CHICK_COLORS[color]!);
+      button.append(dot);
+    }
+    button.append(text);
+    return button;
+  };
+
+  const cooling = (w: WorldState): boolean => w.meeting!.elapsed - w.meeting!.saidAt[LOCAL_PLAYER]! < PLAYER_SAY_COOLDOWN;
+
+  /** Quick reports: true sightings on top, then phrases to fill in with a chick and a room. */
+  const sayBar = (w: WorldState): HTMLElement => {
+    const m = w.meeting!;
+    const bar = el('section', 'meeting-say');
+    if (m.said[LOCAL_PLAYER]! >= PLAYER_SAY_MAX) {
+      bar.append(el('p', 'say-label', t('say.limit')));
+      return bar;
+    }
+    const wait = cooling(w);
+    const row = (label: string, chips: HTMLButtonElement[]): void => {
+      const line = el('div', draft ? 'say-row pick' : 'say-row');
+      line.append(el('span', 'say-label', label));
+      for (const c of chips) {
+        c.disabled = wait && c.dataset.say !== 'cancel';
+        line.append(c);
+      }
+      bar.append(line);
+    };
+    if (!draft) {
+      const hints = m.hints[LOCAL_PLAYER]!;
+      if (hints.length > 0) {
+        row(t('say.seen'), hints.map((line, index) => chip('hint', lineText(w, line), { say: 'hint', index: String(index) })));
+      }
+      row(t('say.title'), PHRASES.map((kind) => chip('', t(`say.kind.${kind}` as I18nKey), { say: 'kind', kind })));
+    } else if (CHAT_NEEDS[draft.kind].about && draft.about === null) {
+      const others = w.participants.filter((p) => p.id !== LOCAL_PLAYER);
+      row(`${t(`say.kind.${draft.kind}` as I18nKey)} ${t('say.pick.about')}`, [
+        ...others.map((p) => chip(p.alive ? '' : 'out', name(w, p.id), { say: 'about', about: String(p.id) }, p.color)),
+        chip('cancel', t('say.cancel'), { say: 'cancel' }),
+      ]);
+    } else {
+      const rooms = [...new Set(w.level.rooms.map((r) => r.type))];
+      row(`${t(`say.kind.${draft.kind}` as I18nKey)} ${t('say.pick.room')}`, [
+        ...rooms.map((room) => chip('', roomName(room), { say: 'room', room })),
+        chip('', roomName(null), { say: 'room', room: '' }),
+        chip('cancel', t('say.cancel'), { say: 'cancel' }),
+      ]);
+    }
+    return bar;
   };
 
   /** The countdown changes every second; only its text is touched, so clicks are never lost. */
@@ -128,26 +222,30 @@ export function createMeetingView(handlers: { onVote(target: number): void }): M
     stage.textContent = `${t(`meeting.stage.${m.stage}` as I18nKey)} · ${t('meeting.seconds', { seconds })}`;
   };
 
+  const hide = (): void => {
+    root.hidden = true;
+    shown = '';
+    draft = null;
+  };
+  const update = (w: WorldState): void => {
+    world = w;
+    const m = w.meeting;
+    if (!m) {
+      hide();
+      return;
+    }
+    // Redraw only when something on screen changed.
+    const key = `${m.stage}|${m.chat.length}|${m.votes.join(',')}|${m.ejected}|${cooling(w)}`;
+    if (key !== shown) {
+      shown = key;
+      draw(w);
+    } else tick(w);
+    root.hidden = false;
+  };
+
   return {
-    update(w) {
-      world = w;
-      const m = w.meeting;
-      if (!m) {
-        this.hide();
-        return;
-      }
-      // Redraw only when something on screen changed.
-      const key = `${m.stage}|${m.chat.length}|${m.votes.join(',')}|${m.ejected}`;
-      if (key !== shown) {
-        shown = key;
-        draw(w);
-      } else tick(w);
-      root.hidden = false;
-    },
-    hide() {
-      root.hidden = true;
-      shown = '';
-    },
+    update,
+    hide,
     relabel() {
       shown = '';
       if (world?.meeting) draw(world);
