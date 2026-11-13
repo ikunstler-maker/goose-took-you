@@ -4,6 +4,7 @@ import {
   BOT_IDLE_VOTE_CHANCE,
   BOT_RANDOM_VOTE,
   BOX_SUSPECT_RANGE,
+  CHAT_TEXT_MAX,
   MEETING_RESULT,
   MEETING_SEAT_RADIUS,
   MEETING_TALK,
@@ -52,7 +53,9 @@ export type ChatKind =
   /** Quick reports only a human makes: met someone somewhere, a plain suspicion, a plain word for someone. */
   | 'sawIn'
   | 'suspect'
-  | 'trust';
+  | 'trust'
+  /** Free text typed by a person; bots take no notice of it. */
+  | 'text';
 
 /** What each line needs filled in. Lines about someone never point at the speaker. */
 export const CHAT_NEEDS: Record<ChatKind, { about: boolean; room: boolean }> = {
@@ -74,6 +77,7 @@ export const CHAT_NEEDS: Record<ChatKind, { about: boolean; room: boolean }> = {
   sawIn: { about: true, room: true },
   suspect: { about: true, room: false },
   trust: { about: true, room: false },
+  text: { about: false, room: false },
 };
 
 /** Lines a human may send; the opening lines are added by the meeting itself. */
@@ -103,6 +107,10 @@ export interface ChatLine {
   about: number | null;
   /** Room the line mentions, if any. */
   room: RoomType | null;
+  /** Free text, for kind `text` only. */
+  text?: string;
+  /** Said by someone already out of the match: only the others who are out can read it. */
+  ghost?: boolean;
 }
 
 /** A line or a vote waiting for its moment, seconds since the meeting started. */
@@ -440,11 +448,30 @@ function hintsFor(state: WorldState, p: Participant, room: RoomType | null): Cha
  * A human's quick report. Anything may be said, true or not; the first claim
  * or vouch of each speaker moves the bots that have no eyewitness reason of their own.
  */
-export function sayLine(state: WorldState, speaker: Participant, kind: ChatKind, about: number | null, room: RoomType | null): SimEvent[] {
+export function sayLine(
+  state: WorldState,
+  speaker: Participant,
+  kind: ChatKind,
+  about: number | null,
+  room: RoomType | null,
+  text: string | undefined = undefined,
+): SimEvent[] {
   const m = state.meeting;
-  if (!m || m.stage === 'result' || !speaker.alive || !SAYABLE.has(kind)) return [];
+  if (!m || m.stage === 'result') return [];
   const id = speaker.id;
   if (m.said[id]! >= PLAYER_SAY_MAX || m.elapsed - m.saidAt[id]! < PLAYER_SAY_COOLDOWN) return [];
+  if (kind === 'text') {
+    const clean = cleanText(text);
+    if (clean === null) return [];
+    m.said[id]!++;
+    m.saidAt[id] = m.elapsed;
+    // Those out of the match still talk, but only among themselves.
+    const line: ChatLine = { who: id, kind, about: null, room: null, text: clean };
+    if (!speaker.alive) line.ghost = true;
+    m.chat.push(line);
+    return [{ type: 'chat', who: id }];
+  }
+  if (!speaker.alive || !SAYABLE.has(kind)) return [];
   const needs = CHAT_NEEDS[kind];
   if (needs.about ? about === null || about === id || !Number.isInteger(about) || !state.participants[about] : about !== null) return [];
   if (needs.room ? room !== null && !state.level.rooms.some((r) => r.type === room) : room !== null) return [];
@@ -498,6 +525,22 @@ export function sayLine(state: WorldState, speaker: Participant, kind: ChatKind,
 const people = (state: WorldState): number => state.participants.filter((p) => !p.isBot).length;
 export const talkTime = (state: WorldState): number => (people(state) > 1 ? MEETING_TALK_PEOPLE : MEETING_TALK);
 export const voteTime = (state: WorldState): number => (people(state) > 1 ? MEETING_VOTE_PEOPLE : MEETING_VOTE);
+
+/** Free text as it goes into the chat: one line, no control characters, trimmed, within the limit; null when nothing is left. */
+export function cleanText(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  let out = '';
+  for (const ch of raw) {
+    const code = ch.codePointAt(0)!;
+    // Control and invisible direction characters could break or disguise a line.
+    const odd = code < 32 || (code >= 127 && code < 160) || (code >= 0x200b && code <= 0x200f) || (code >= 0x202a && code <= 0x202e) || (code >= 0x2066 && code <= 0x2069);
+    out += odd ? ' ' : ch;
+  }
+  out = out.replace(/ +/g, ' ').trim();
+  const chars = [...out];
+  if (chars.length === 0) return null;
+  return chars.slice(0, CHAT_TEXT_MAX).join('').trim();
+}
 
 /** Records a vote; only in the voting stage, once, by the living, for the living or nobody. */
 export function castVote(state: WorldState, voter: Participant, target: number): SimEvent[] {

@@ -355,7 +355,9 @@ export const BOT_NOTES_MAX = 4;
 
 /** Quick reports: the player's lines at a meeting. Seconds between lines, and lines per meeting. */
 export const PLAYER_SAY_COOLDOWN = 1.5;
-export const PLAYER_SAY_MAX = 8;
+export const PLAYER_SAY_MAX = 12;
+/** Free text at a meeting: longest message, characters. */
+export const CHAT_TEXT_MAX = 120;
 /** Chance an undecided bot follows a player's eyewitness claim, a vague suspicion, or drops its vote after a player vouches. */
 export const PLAYER_SWAY_SAW = 0.6;
 export const PLAYER_SWAY_SUS = 0.3;

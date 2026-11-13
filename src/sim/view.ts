@@ -207,7 +207,8 @@ export function viewFor(state: WorldState, you: number): PlayerView {
       victim: m.victim,
       stage: m.stage,
       timeLeft: m.timeLeft,
-      chat: m.chat.map((line) => ({ ...line })),
+      // The living do not read what those out of the match say among themselves.
+      chat: m.chat.filter((line) => !line.ghost || !viewer.alive).map((line) => ({ ...line })),
       voted: m.votes.map((v) => v !== null),
       votes: m.stage === 'result' ? [...m.votes] : null,
       myVote: m.votes[you] ?? null,
@@ -239,6 +240,8 @@ export function eventsFor(state: WorldState, you: number, events: readonly SimEv
   const viewer = state.participants[you]!;
   const out: SimEvent[] = [];
   for (const event of events) {
+    // A line from someone out of the match is heard only by the others who are out.
+    if (event.type === 'chat' && viewer.alive && !state.participants[event.who]!.alive) continue;
     if (PUBLIC.has(event.type) || !('who' in event)) {
       out.push(event);
       continue;
