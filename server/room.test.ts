@@ -166,4 +166,44 @@ describe('rooms', () => {
     expect(r.state.tick).toBe(tick);
     expect(r.emptyFor).toBeGreaterThan(1.9);
   });
+
+  it('send the meeting itself only when someone speaks or votes; the clocks tick separately', () => {
+    const r = room();
+    const a = browser();
+    const idA = r.join(a.send, null) as number;
+    r.receive(idA, { t: 'cmd', c: { type: 'start' } });
+    run(r, 0.3);
+    const s = r.state;
+    s.buttonCooldown = 0;
+    const table = s.level.props.find((p) => p.kind === 'meetingTable')!;
+    s.participants[0]!.x = table.x + Math.max(table.w, table.d) / 2 + 0.5;
+    s.participants[0]!.z = table.z;
+    r.tick(0.05);
+    r.receive(idA, { t: 'cmd', c: { type: 'interact' } });
+    expect(s.phase).toBe('meeting');
+    run(r, 0.5);
+    expect(a.view.meeting).toMatchObject({ stage: 'talk', caller: 0 });
+    expect(a.view.meeting).not.toHaveProperty('timeLeft');
+    expect(a.view.clock!.timeLeft).toBeGreaterThan(0);
+
+    a.inbox.length = 0;
+    const lines = s.meeting!.chat.length;
+    let quiet = 0;
+    let withMeeting = 0;
+    // Until the next bot speaks, every snapshot carries the clock and never the whole meeting.
+    for (let t = 0; t < 1.2 && s.meeting!.chat.length === lines; t += 0.05) r.tick(0.05);
+    for (const m of a.inbox) {
+      if (m.t !== 'state') continue;
+      if ('meeting' in m.v) withMeeting++;
+      else if ('clock' in m.v) quiet++;
+    }
+    expect(quiet).toBeGreaterThan(3);
+    expect(withMeeting).toBeLessThanOrEqual(1);
+    // After the meeting both parts are cleared (checked right as it ends: bots may call the next one later).
+    for (let t = 0; t < 120 && s.phase === 'meeting'; t += 0.05) r.tick(0.05);
+    run(r, 0.3);
+    expect(s.phase).not.toBe('meeting');
+    expect(a.view.meeting).toBeNull();
+    expect(a.view.clock).toBeNull();
+  });
 });

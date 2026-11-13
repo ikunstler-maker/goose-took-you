@@ -1,4 +1,4 @@
-import type { ClientMessage, PlayerCommand, Refusal, ServerMessage, WireView } from './protocol';
+import { PROTOCOL, type ClientMessage, type PlayerCommand, type Refusal, type ServerMessage, type WireView } from './protocol';
 import type { SimEvent } from '../sim/world';
 
 export type OnlineStatus = 'connecting' | 'online' | 'reconnecting';
@@ -58,6 +58,11 @@ export function connect(url: string, first: ClientMessage, handlers: OnlineHandl
         return;
       }
       if (message.t === 'room') {
+        // The site and the server were updated at different moments: better to say so than to misread each other.
+        if (message.v !== PROTOCOL) {
+          end('version');
+          return;
+        }
         seat = { code: message.code, token: message.token };
         retries = 0;
         view = {};

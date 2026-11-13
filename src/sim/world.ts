@@ -23,6 +23,8 @@ import {
   TELL_MIN,
   SABOTAGE_COOLDOWN,
   SABOTAGE_FIRST,
+  TASK_MIN_TIME,
+  TICK,
   HONK_MAX,
   HONK_MIN,
   HONK_TIME,
@@ -154,6 +156,8 @@ export interface Participant {
   prompt: Prompt | null;
   /** Task whose mini-game is open; the chick stands still meanwhile, the office does not. */
   activeTask: number | null;
+  /** Tick on which that window opened. */
+  taskSince: number;
   /** Watching the security cameras; stands still meanwhile, like during a mini-game. */
   watching: boolean;
   /** Human players: what they saw since the last meeting, newest first. Empty for bots. */
@@ -451,6 +455,7 @@ export function createWorld(
     visited: [],
     prompt: null,
     activeTask: null,
+    taskSince: 0,
     watching: false,
     seen: [],
     brain: id === LOCAL_PLAYER ? null : createBrain(botRng),
@@ -567,7 +572,9 @@ export function applyCommand(state: WorldState, who: number, command: Command): 
     case 'cancelTask': {
       if (actor.activeTask === null) return [];
       const task = state.tasks[actor.activeTask]!;
-      const done = command.type === 'finishTask';
+      // A win reported sooner than the mini-game can be played is not a win: the window just closes.
+      const played = (state.tick - actor.taskSince) * TICK;
+      const done = command.type === 'finishTask' && played >= (TASK_MIN_TIME[task.kind] ?? 0);
       actor.activeTask = null;
       const events: SimEvent[] = [{ type: 'taskClosed', who: actor.id, taskId: task.id, done }];
       if (done && task.kind === 'news') {
@@ -807,6 +814,7 @@ function interact(state: WorldState, actor: Participant): SimEvent[] {
   // The key card is picked up first and swiped at the reader by the door.
   if (takeBadge(state.stations, task)) return [{ type: 'badgeTaken', who: actor.id, taskId: task.id }];
   actor.activeTask = task.id;
+  actor.taskSince = state.tick;
   const seed = ((state.level.seed * 31 + task.id * 997 + state.tick) >>> 0) || 1;
   return [{ type: 'taskOpened', who: actor.id, taskId: task.id, kind: task.kind, seed }];
 }

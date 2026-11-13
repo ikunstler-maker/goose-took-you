@@ -125,15 +125,22 @@ export function applyView(world: WorldState, view: WireView, changed: Partial<Wi
   if (changed.carpets) world.carpets = view.carpets.map((carpet) => ({ ...carpet }));
 
   const m = view.meeting;
+  const clock = view.clock ?? { timeLeft: 0, sayIn: 0 };
+  // The window only asks «may I speak yet?»: elapsed − saidAt < cooldown.
+  const saidAt = clock.sayIn - PLAYER_SAY_COOLDOWN;
   if (!m) world.meeting = null;
-  else if (changed.meeting) {
+  else if (!changed.meeting && world.meeting) {
+    // Nobody spoke or voted: only the clocks moved.
+    world.meeting.timeLeft = clock.timeLeft;
+    world.meeting.saidAt[you] = saidAt;
+  } else {
     const seats = world.participants;
     world.meeting = {
       caller: m.caller,
       victim: m.victim,
       stage: m.stage,
       elapsed: 0,
-      timeLeft: m.timeLeft,
+      timeLeft: clock.timeLeft,
       chat: m.chat,
       votes: m.votes ?? m.voted.map((voted, id) => (id === you ? m.myVote : voted ? HIDDEN_VOTE : null)),
       plan: [],
@@ -142,8 +149,7 @@ export function applyView(world: WorldState, view: WireView, changed: Partial<Wi
       rooms: seats.map(() => null),
       hints: seats.map((p) => (p.id === you ? m.hints : [])),
       said: seats.map((p) => (p.id === you ? m.said : 0)),
-      // The window only asks «may I speak yet?»: elapsed − saidAt < cooldown.
-      saidAt: seats.map((p) => (p.id === you ? m.sayIn - PLAYER_SAY_COOLDOWN : -PLAYER_SAY_COOLDOWN)),
+      saidAt: seats.map((p) => (p.id === you ? saidAt : -PLAYER_SAY_COOLDOWN)),
       swayed: seats.map(() => false),
     };
   }

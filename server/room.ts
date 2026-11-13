@@ -1,5 +1,5 @@
 import { ACCESSORIES, CHAT_TEXT_MAX, CHICK_COLORS, TICK } from '../src/config';
-import { toWire, type ClientMessage, type Look, type PlayerCommand, type Refusal, type ServerMessage, type WireView } from '../src/net/protocol';
+import { PROTOCOL, toWire, type ClientMessage, type Look, type PlayerCommand, type Refusal, type ServerMessage, type WireView } from '../src/net/protocol';
 import { eventsFor, viewFor } from '../src/sim/view';
 import { applyCommand, createWorld, step, type SimEvent, type WorldState } from '../src/sim/world';
 import { MAX_CATCH_UP, SEND_RATE } from './config';
@@ -126,7 +126,7 @@ export class Room {
   private welcome(peer: Peer): void {
     peer.sent.clear();
     peer.events = [];
-    peer.send!({ t: 'room', code: this.code, you: peer.seat, token: peer.token, host: this.host, players: this.players });
+    peer.send!({ t: 'room', v: PROTOCOL, code: this.code, you: peer.seat, token: peer.token, host: this.host, players: this.players });
     this.tellRoster();
     this.sendState(peer);
   }
