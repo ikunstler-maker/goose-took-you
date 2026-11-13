@@ -33,6 +33,8 @@ const WALL_TINT: Record<RoomType, number> = {
   meeting: 0xffe3c9,
   lounge: 0xffd9c9,
   greenhouse: 0xd9f2c9,
+  gambling: 0xf2d4ec,
+  security: 0xdbe3ea,
 };
 const WALL_NEUTRAL = 0xf7f1e6;
 

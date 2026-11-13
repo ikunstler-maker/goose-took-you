@@ -2,10 +2,14 @@ import { MINIGAME_DONE_PAUSE } from '../config';
 import type { SoundName } from '../audio/sound';
 import { t } from '../i18n';
 import type { TaskKind } from '../sim/tasks';
+import { createBadgeView } from './badge/view';
 import { createCopycatView } from './copycat/view';
+import { createCurveView } from './curve/view';
+import { createGpuView } from './gpu/view';
 import { createLinesView } from './lines/view';
 import { createModusView } from './modus/view';
 import { createNewsView } from './news/view';
+import { createSlotView } from './slot/view';
 import type { MinigameFactory, MinigameView } from './types';
 
 /** Window mini-games; cargo is played in the office itself. */
@@ -14,6 +18,10 @@ const FACTORIES: Partial<Record<TaskKind, MinigameFactory>> = {
   copycat: createCopycatView,
   news: createNewsView,
   lines: createLinesView,
+  curve: createCurveView,
+  gpu: createGpuView,
+  slot: createSlotView,
+  badge: createBadgeView,
 };
 
 export interface MinigameHost {

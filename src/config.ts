@@ -1,9 +1,11 @@
 // All tunables live here (see CLAUDE.md, invariant 6).
 
 /** Office side length in cells; one cell is one metre. */
-export const MAP = 88;
+export const MAP = 116;
 /** Rooms are laid out in a SECTORS x SECTORS grid of loose sectors. */
-export const SECTORS = 3;
+export const SECTORS = 4;
+/** Sector index (row * SECTORS + col) that always holds the lobby. */
+export const LOBBY_SECTOR = 5;
 /** Side of the square that holds a room's fixed hub furniture. */
 export const CORE = 12;
 /** Largest bounding box side of a room shape. */
@@ -293,3 +295,33 @@ export const TOUCH_SHADOW_MAP = 2048;
 export const SHADOW_MAP = 4096;
 /** On a tall screen the camera keeps at least this share of its zoom as half-width, so the view is not a slit. */
 export const PORTRAIT_FIT = 0.85;
+
+// Stage 6 mini-games.
+/** «Крива в Graph Editor»: largest allowed handle distance from the target, in curve units (0..1). */
+export const CURVE_TOLERANCE = 0.06;
+/** Starting handles are at least this far from the target. */
+export const CURVE_MIN_START_OFFSET = 0.25;
+/** «Охолоди GPU»: temperature scale is 0..1; green zone bounds. */
+export const GPU_ZONE_LOW = 0.4;
+export const GPU_ZONE_HIGH = 0.6;
+export const GPU_START_TEMP = 0.9;
+/** Heating per second while the fan is off; cooling per second while it is held. */
+export const GPU_HEAT_RATE = 0.22;
+export const GPU_COOL_RATE = 0.32;
+/** Random load spikes: chance per second and size. */
+export const GPU_SPIKE_CHANCE = 0.6;
+export const GPU_SPIKE = 0.08;
+/** Continuous seconds in the green zone that cool the card. */
+export const GPU_HOLD_TIME = 4;
+/** «Занос на 777»: reel symbols, starting speed (symbols per second), slowdown per miss, floor speed. */
+export const SLOT_SYMBOLS = 8;
+export const SLOT_START_SPEED = 9;
+export const SLOT_SLOWDOWN = 0.75;
+export const SLOT_MIN_SPEED = 2.5;
+/** «Сканер бейджа»: allowed swipe duration, seconds. */
+export const BADGE_MIN_TIME = 0.6;
+export const BADGE_MAX_TIME = 1.2;
+/** Share of the track that counts as a full swipe. */
+export const BADGE_TRACK_DONE = 0.95;
+/** «Занос на 777»: seconds a missed reel shows its symbol before spinning again. */
+export const MINIGAME_SLOT_MISS_PAUSE = 0.6;

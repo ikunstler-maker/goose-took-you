@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BORED_AFTER, CORE, MAP, PLAYER_RADIUS, TICK } from '../config';
+import { BORED_AFTER, CORE, LOBBY_SECTOR, MAP, PLAYER_RADIUS, TICK } from '../config';
 import { blocked, buildBuckets, CORRIDOR, FLOOR, generateLevel, GLASS, roomAt, SOLID, type Level } from './level';
 import { SHUFFLED_ROOMS } from './prefabs';
 import { computeVisibility } from './vision';
@@ -67,7 +67,7 @@ describe('generateLevel', () => {
       const level = generateLevel(seed);
       expect(level.size).toBe(MAP);
       expect(level.rooms.map((room) => room.type).sort()).toEqual([...SHUFFLED_ROOMS, 'lobby'].sort());
-      expect(level.rooms[4]!.type).toBe('lobby');
+      expect(level.rooms[LOBBY_SECTOR]!.type).toBe('lobby');
     }
   });
 
@@ -153,7 +153,7 @@ describe('vision', () => {
     const level = generateLevel(7);
     const visible = new Uint8Array(level.size * level.size);
     computeVisibility(level, level.spawn.x, level.spawn.z, visible);
-    const lobby = level.rooms[4]!;
+    const lobby = level.rooms[LOBBY_SECTOR]!;
     let seenInLobby = 0;
     let seenElsewhere = 0;
     for (let i = 0; i < visible.length; i++) {
