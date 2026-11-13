@@ -79,7 +79,7 @@ export function createHud(handlers: { onNewOffice(): void; onLangChange(lang: La
 
   const promptText = (w: WorldState): string => {
     const self = me(w);
-    if (w.phase !== 'play' || self.activeTask !== null || !self.alive) return '';
+    if (w.phase !== 'play' || self.activeTask !== null || self.watching || !self.alive) return '';
     if (self.under !== null) return t(isTouch() ? 'hud.carpetUnderTouch' : 'hud.carpetUnder', { key: keyName('interact') });
     const lines: string[] = [];
     if (self.canPack !== null) {
@@ -99,6 +99,7 @@ export function createHud(handlers: { onNewOffice(): void; onLangChange(lang: La
     if (p?.kind === 'pickup') return t('hud.pickup', { key: keyName('interact') });
     if (p?.kind === 'deliver') return t('hud.deliver', { key: keyName('interact') });
     if (p?.kind === 'button') return t('hud.button', { key: keyName('interact') });
+    if (p?.kind === 'cameras') return t('hud.cameras', { key: keyName('interact') });
     if (p?.kind === 'carpet') return t('hud.carpetIn', { key: keyName('interact') });
     if (self.carrying !== null) {
       const box = w.boxes.find((b) => b.id === self.carrying);

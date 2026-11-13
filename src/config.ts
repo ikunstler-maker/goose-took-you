@@ -328,3 +328,8 @@ export const MINIGAME_SLOT_MISS_PAUSE = 0.6;
 /** Minimap side in CSS pixels: small and expanded (click or tap toggles). */
 export const MINIMAP_SIZE = 150;
 export const MINIMAP_SIZE_BIG = 320;
+/** Security cameras: rooms they watch (first room of each type), in tile order, and how far they see. */
+export const CAMERA_ROOMS = ['lobby', 'meeting', 'motion', 'cargo'] as const;
+export const CAMERA_RADIUS = 16;
+/** Seconds a camera tile flashes after it caught a pack. */
+export const CAMERA_ALERT_TIME = 4;
