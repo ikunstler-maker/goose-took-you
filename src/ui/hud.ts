@@ -104,6 +104,9 @@ export function createHud(handlers: { onNewOffice(): void; onLangChange(lang: La
     if (p?.kind === 'pickup') return t('hud.pickup', { key: keyName('interact') });
     if (p?.kind === 'deliver') return t('hud.deliver', { key: keyName('interact') });
     if (p?.kind === 'button') return t('hud.button', { key: keyName('interact') });
+    if (p?.kind === 'greenButton') return t('hud.greenButton', { key: keyName('interact') });
+    const rush = w.tasks.find((task) => task.owner === LOCAL_PLAYER && task.rush > 0);
+    if (rush) return t('hud.rush', { seconds: Math.ceil(rush.rush) });
     if (p?.kind === 'cameras') return t('hud.cameras', { key: keyName('interact') });
     if (p?.kind === 'carpet') return t('hud.carpetIn', { key: keyName('interact') });
     if (self.carrying !== null) {

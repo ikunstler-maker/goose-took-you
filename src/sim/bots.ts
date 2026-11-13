@@ -66,6 +66,8 @@ export type Goal =
   | { kind: 'button' }
   /** Goose: get to this rug to escape under it. */
   | { kind: 'carpet'; carpet: number }
+  /** Dash to the Giant Green Button after a news edit. */
+  | { kind: 'green'; task: number }
   /** Chick: walk over to a vacation box it saw. */
   | { kind: 'report'; box: number }
   /** Chick: run to a sabotage fix point (prop index). */
@@ -306,6 +308,8 @@ function chooseGoal(state: WorldState, bot: Participant, avoid: number | null): 
     const box = state.boxes.find((b) => b.id === bot.carrying)!;
     return { kind: 'deliver', task: box.task };
   }
+  const rushing = state.tasks.find((t) => t.owner === bot.id && t.rush > 0 && !t.done);
+  if (rushing) return { kind: 'green', task: rushing.id };
   const dropped = state.boxes.find((b) => b.kind === 'cargo' && b.carrier === null && state.tasks[b.task]!.owner === bot.id);
   if (dropped) return { kind: 'pickup', box: dropped.id };
   const task = state.tasks.find((t) => t.owner === bot.id && !t.done && !t.started && t.id !== avoid);
@@ -365,6 +369,10 @@ function destinations(state: WorldState, nav: NavGrid, bot: Participant, goal: G
     }
     case 'fix':
       return standCells(state, nav, goal.point).slice(0, STAND_TRIES);
+    case 'green': {
+      const index = state.level.props.findIndex((p) => p.hub && p.kind === 'greenButton');
+      return index < 0 ? [] : standCells(state, nav, index).slice(0, STAND_TRIES);
+    }
   }
 }
 
@@ -380,6 +388,7 @@ function promptFits(bot: Participant, goal: Goal): boolean {
   if (goal.kind === 'deliver') return p.kind === 'deliver';
   if (goal.kind === 'pickup') return p.kind === 'pickup' && p.box === goal.box;
   if (goal.kind === 'button') return p.kind === 'button';
+  if (goal.kind === 'green') return p.kind === 'greenButton';
   if (goal.kind === 'carpet') return p.kind === 'carpet' && p.carpet === goal.carpet;
   if (goal.kind === 'fix') return p.kind === 'fix' && p.point === goal.point;
   return false;
@@ -524,7 +533,8 @@ export function thinkBot(state: WorldState, nav: NavGrid, bot: Participant, dt: 
     if (brain.work <= 0) {
       events.push(...send(bot.id, { type: 'finishTask' }));
       brain.goal = null;
-      brain.wait = between(rng, 0.3, 1);
+      // No dawdling when the Giant Green Button is waiting.
+      brain.wait = state.tasks.some((t) => t.owner === bot.id && t.rush > 0) ? 0 : between(rng, 0.3, 1);
     }
     return events;
   }

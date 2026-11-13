@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { INTERACT_RANGE, NEWS_BROADCAST_TIME, TASKS_PER_PLAYER, TICK } from '../config';
+import { INTERACT_RANGE, NEWS_BROADCAST_TIME, NEWS_BUTTON_TIME, TASKS_PER_PLAYER, TICK } from '../config';
 import { rollSlip } from './cargo';
 import { STATION_PROPS, stationDistance, taskProgress, WINDOW_TASKS, type TaskKind } from './tasks';
 import { applyCommand, createWorld as createLobby, LOCAL_PLAYER, me, step, type WorldState } from './world';
@@ -84,14 +84,46 @@ describe('tasks', () => {
     expect(me(state).z).toBe(z);
   });
 
-  it('starts the Lobby news broadcast when the news edit is done', () => {
-    const state = createWorld(42);
-    standAt(state, taskOf(state, 'news'));
+  /** Cuts the news edit; returns the task id, with the button rush running. */
+  function cutNews(state: WorldState): number {
+    const id = taskOf(state, 'news');
+    standAt(state, id);
     expect(applyCommand(state, LOCAL_PLAYER, { type: 'interact' })[0]).toMatchObject({ type: 'taskOpened', kind: 'news' });
-    expect(applyCommand(state, LOCAL_PLAYER, { type: 'finishTask' })).toContainEqual({ type: 'broadcastStarted' });
+    expect(applyCommand(state, LOCAL_PLAYER, { type: 'finishTask' })).toContainEqual({ type: 'rushStarted', who: LOCAL_PLAYER, taskId: id });
+    expect(state.tasks[id]!.done).toBe(false);
+    expect(state.broadcast).toBe(0);
+    return id;
+  }
+
+  it('airs the news only after a dash to the Giant Green Button in the room', () => {
+    const state = worldWith('news');
+    const id = cutNews(state);
+    const button = state.level.props.find((p) => p.hub && p.kind === 'greenButton')!;
+    expect(button.room).toBe(state.stations[state.tasks[id]!.station]!.room);
+    me(state).x = button.x - button.w / 2 - 0.5;
+    me(state).z = button.z;
+    step(state, TICK);
+    expect(me(state).prompt).toEqual({ kind: 'greenButton', task: id });
+    const events = applyCommand(state, LOCAL_PLAYER, { type: 'interact' });
+    expect(events).toContainEqual({ type: 'broadcastStarted' });
+    expect(events).toContainEqual({ type: 'newsLaunched', who: LOCAL_PLAYER, x: button.x, z: button.z });
+    expect(state.tasks[id]!.done).toBe(true);
     expect(state.broadcast).toBe(NEWS_BROADCAST_TIME);
     for (let t = 0; t < NEWS_BROADCAST_TIME + 0.1; t += TICK) step(state, TICK);
     expect(state.broadcast).toBe(0);
+  });
+
+  it('makes the editor cut again when the button is not reached in time', () => {
+    const state = worldWith('news');
+    for (const p of state.participants) if (p.brain) p.brain.wait = 1e9;
+    const id = cutNews(state);
+    step(state, TICK);
+    expect(me(state).prompt).toBeNull();
+    const events: unknown[] = [];
+    for (let t = 0; t < NEWS_BUTTON_TIME + 0.1; t += TICK) events.push(...step(state, TICK));
+    expect(events).toContainEqual({ type: 'rushFailed', who: LOCAL_PLAYER, taskId: id });
+    expect(state.tasks[id]!.done).toBe(false);
+    expect(me(state).prompt).toEqual({ kind: 'task', task: id });
   });
 });
 

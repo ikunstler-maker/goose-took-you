@@ -1,7 +1,12 @@
 import * as THREE from 'three';
 import { t } from '../i18n';
 import type { Level } from '../sim/level';
+import { drawBeachChibi, drawRunningChick } from '../art/beach';
 import { withFog } from './kit';
+
+const HOUSES = ['#ffd9a8', '#c9e6c0', '#ffc2d4', '#cfd9ff'];
+const CHICKS = ['#ffd84a', '#ffa8c5', '#8fe3c2', '#c3a8f5'];
+const RUNNERS = 9;
 
 /** Lobby screen size and centre height; must match the `tv` prop in props.ts. */
 const TV_W = 5.2;
@@ -45,16 +50,34 @@ export function createBroadcast(level: Level): BroadcastView {
   let lastDraw = -1;
 
   const draw = (time: number): void => {
-    ctx.fillStyle = '#b3122e';
+    // Street scene: sky, a row of houses, the road. Chicks and beach-goers run across it.
+    ctx.fillStyle = '#9fdcff';
     ctx.fillRect(0, 0, PX_W, PX_H);
-    // Studio backdrop: abstract pixel mosaic, no recognisable imagery.
-    for (let i = 0; i < 48; i++) {
-      const x = (i % 12) * 32 + 64;
-      const y = Math.floor(i / 12) * 24 + 52;
-      const on = Math.sin(time * 3 + i * 1.7) > 0.2;
-      ctx.fillStyle = on ? '#ffc93d' : '#3fc3ff';
-      ctx.fillRect(x, y, 28, 20);
+    const scroll = (time * 60) % 128;
+    for (let i = -1; i < 6; i++) {
+      const x = i * 128 - scroll;
+      ctx.fillStyle = HOUSES[((i + Math.floor((time * 60) / 128)) % HOUSES.length + HOUSES.length) % HOUSES.length]!;
+      ctx.fillRect(x + 8, 70, 112, 90);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+      ctx.fillRect(x + 24, 88, 24, 24);
+      ctx.fillRect(x + 78, 88, 24, 24);
     }
+    ctx.fillStyle = '#8a8f99';
+    ctx.fillRect(0, 150, PX_W, 46);
+    ctx.fillStyle = '#f2d9a0';
+    ctx.fillRect(0, 142, PX_W, 10);
+    for (let i = 0; i < RUNNERS; i++) {
+      // Each runner crosses the screen at its own pace and wraps around.
+      const pace = 70 + ((i * 37) % 50);
+      const x = ((time * pace + i * 97) % (PX_W + 120)) - 60;
+      const y = 176 + ((i * 13) % 3) * 8;
+      const stride = Math.sin(time * 14 + i * 1.9);
+      const hop = Math.abs(stride) * 4;
+      if (i % 2 === 0) drawRunningChick(ctx, x, y - hop, 44, CHICKS[i % CHICKS.length]!, stride);
+      else drawBeachChibi(ctx, x, y - hop, 78, i * 7 + 3, stride);
+    }
+    ctx.fillStyle = '#b3122e';
+    ctx.fillRect(0, 0, PX_W, 52);
     ctx.fillStyle = '#fff';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';

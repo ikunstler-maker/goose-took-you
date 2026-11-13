@@ -9,6 +9,7 @@ import {
   GOOSE_GRACE,
   BOT_IDLE_NOTE,
   INTERACT_RANGE,
+  NEWS_BUTTON_TIME,
   CHICK_COLORS,
   DIZZY_COOLDOWN,
   DIZZY_TIME,
@@ -80,7 +81,9 @@ export type Prompt =
   /** Restart a fan or sign the NDA while a sabotage runs; `point` is a prop index. */
   | { kind: 'fix'; point: number }
   /** Security desk: watch the cameras. */
-  | { kind: 'cameras' };
+  | { kind: 'cameras' }
+  /** The Giant Green Button, while the participant's news edit waits for it. */
+  | { kind: 'greenButton'; task: number };
 
 /** A chick, or the Goose disguised as one. */
 export type Role = 'chick' | 'goose';
@@ -211,6 +214,11 @@ export type Command =
   | { type: 'sabotage'; kind: SabotageKind };
 
 export type SimEvent =
+  | { type: 'rushStarted'; who: number; taskId: number }
+  /** The Giant Green Button was not reached in time: the edit must be redone. */
+  | { type: 'rushFailed'; who: number; taskId: number }
+  /** The Giant Green Button was pressed: confetti at (x, z). */
+  | { type: 'newsLaunched'; who: number; x: number; z: number }
   | { type: 'badgeTaken'; who: number; taskId: number }
   | { type: 'camerasOpened'; who: number }
   | { type: 'camerasClosed'; who: number }
@@ -435,7 +443,11 @@ export function applyCommand(state: WorldState, who: number, command: Command): 
       const done = command.type === 'finishTask';
       actor.activeTask = null;
       const events: SimEvent[] = [{ type: 'taskClosed', who: actor.id, taskId: task.id, done }];
-      if (done) events.push(...completeTask(state, actor, task));
+      if (done && task.kind === 'news') {
+        // The edit is cut; it only airs once the Giant Green Button in the room is pressed in time.
+        task.rush = NEWS_BUTTON_TIME;
+        events.push({ type: 'rushStarted', who: actor.id, taskId: task.id });
+      } else if (done) events.push(...completeTask(state, actor, task));
       return events;
     }
   }
@@ -593,6 +605,12 @@ function interact(state: WorldState, actor: Participant): SimEvent[] {
   }
   const prompt = actor.prompt;
   if (actor.activeTask !== null || actor.watching || prompt === null) return [];
+  if (prompt.kind === 'greenButton') {
+    const task = state.tasks[prompt.task]!;
+    task.rush = 0;
+    const button = greenButton(state)!;
+    return [...completeTask(state, actor, task), { type: 'newsLaunched', who: actor.id, x: button.x, z: button.z }];
+  }
   if (prompt.kind === 'cameras') {
     actor.watching = true;
     return [{ type: 'camerasOpened', who: actor.id }];
@@ -665,6 +683,11 @@ function computePrompt(state: WorldState, actor: Participant): Prompt | null {
   }
   const box = boxInReach(state.boxes, actor.x, actor.z);
   if (box) return { kind: 'pickup', box: box.id };
+  const rushing = rushTask(state, actor.id);
+  if (rushing) {
+    const button = greenButton(state);
+    if (button && propDistance(button, actor.x, actor.z) <= INTERACT_RANGE) return { kind: 'greenButton', task: rushing.id };
+  }
   const task = taskInReach(state.level, state.stations, state.tasks, actor.id, actor.x, actor.z);
   if (task) return { kind: 'task', task: task.id };
   if (cameraDeskInReach(state, actor)) return { kind: 'cameras' };
@@ -673,6 +696,16 @@ function computePrompt(state: WorldState, actor: Participant): Prompt | null {
     if (carpet) return { kind: 'carpet', carpet: carpet.id };
   }
   return canPressButton(state, actor) ? { kind: 'button' } : null;
+}
+
+/** The participant's news edit that waits for the Giant Green Button, if any. */
+export function rushTask(state: WorldState, owner: number): Task | null {
+  return state.tasks.find((t) => t.owner === owner && t.rush > 0 && !t.done) ?? null;
+}
+
+/** The Giant Green Button of the news room. */
+export function greenButton(state: WorldState): Level['props'][number] | null {
+  return state.level.props.find((prop) => prop.hub && prop.kind === 'greenButton') ?? null;
 }
 
 /** Next to the security desk. Anyone alive may watch, the Goose too. */
@@ -844,6 +877,15 @@ export function step(state: WorldState, dt: number): SimEvent[] {
   state.broadcast = Math.max(0, state.broadcast - dt);
   for (const c of state.carpets) c.lift = Math.max(0, c.lift - dt);
   if (state.phase === 'play') {
+    for (const task of state.tasks) {
+      if (task.rush <= 0) continue;
+      task.rush -= dt;
+      // A packed editor's button rush just lapses.
+      if (task.rush <= 0) {
+        task.rush = 0;
+        if (state.participants[task.owner]!.alive) events.push({ type: 'rushFailed', who: task.owner, taskId: task.id });
+      }
+    }
     state.buttonCooldown = Math.max(0, state.buttonCooldown - dt);
     if (state.sabotage) state.sabotage.left -= dt;
     else state.sabotageCooldown = Math.max(0, state.sabotageCooldown - dt);

@@ -557,7 +557,6 @@ button:hover {
 .news-tile {
   width: calc(var(--cell, 64px) - 8px);
   height: calc(var(--cell, 64px) - 8px);
-  image-rendering: pixelated;
   border-radius: 6px;
   cursor: grab;
   box-shadow: 0 0 0 3px #fff;
@@ -611,7 +610,6 @@ button:hover {
 .news-file {
   width: 36px;
   height: 36px;
-  image-rendering: pixelated;
   border-radius: 4px;
 }
 
