@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { INTERACT_RANGE, NEWS_BROADCAST_TIME, NEWS_BUTTON_TIME, TASKS_PER_PLAYER, TICK } from '../config';
+import { INTERACT_RANGE, NEWS_BROADCAST_TIME, NEWS_BUTTON_TIME, TASK_MIN_TIME, TASKS_PER_PLAYER, TICK } from '../config';
 import { rollSlip } from './cargo';
 import { STATION_PROPS, stationDistance, taskProgress, WINDOW_TASKS, type TaskKind } from './tasks';
 import { applyCommand, createWorld as createLobby, LOCAL_PLAYER, me, step, type WorldState } from './world';
@@ -20,6 +20,11 @@ function standAt(state: WorldState, taskId: number): void {
   me(state).x = prop.x;
   me(state).z = prop.z + prop.d / 2 + 0.5;
   step(state, TICK);
+}
+
+/** Lets the shortest honest playing time of a task's mini-game pass. */
+function play(state: WorldState, taskId: number): void {
+  for (let t = 0; t < TASK_MIN_TIME[state.tasks[taskId]!.kind]! + TICK; t += TICK) step(state, TICK);
 }
 
 const taskOf = (state: WorldState, kind: TaskKind): number =>
@@ -66,7 +71,14 @@ describe('tasks', () => {
     expect(state.tasks[id]!.done).toBe(false);
     expect(taskProgress(state.tasks)).toBe(0);
 
+    // «Done» the instant the window opens cannot be honest: it only closes the window.
     applyCommand(state, LOCAL_PLAYER, { type: 'interact' });
+    expect(applyCommand(state, LOCAL_PLAYER, { type: 'finishTask' })).toEqual([{ type: 'taskClosed', who: 0, taskId: id, done: false }]);
+    expect(state.tasks[id]!.done).toBe(false);
+    expect(me(state).activeTask).toBeNull();
+
+    applyCommand(state, LOCAL_PLAYER, { type: 'interact' });
+    play(state, id);
     expect(applyCommand(state, LOCAL_PLAYER, { type: 'finishTask' })).toContainEqual({ type: 'taskDone', who: 0, taskId: id });
     expect(taskProgress(state.tasks)).toBe(1 / state.tasks.length);
     step(state, TICK);
@@ -89,6 +101,7 @@ describe('tasks', () => {
     const id = taskOf(state, 'news');
     standAt(state, id);
     expect(applyCommand(state, LOCAL_PLAYER, { type: 'interact' })[0]).toMatchObject({ type: 'taskOpened', kind: 'news' });
+    play(state, id);
     expect(applyCommand(state, LOCAL_PLAYER, { type: 'finishTask' })).toContainEqual({ type: 'rushStarted', who: LOCAL_PLAYER, taskId: id });
     expect(state.tasks[id]!.done).toBe(false);
     expect(state.broadcast).toBe(0);

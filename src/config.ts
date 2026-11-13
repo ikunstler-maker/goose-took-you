@@ -419,3 +419,21 @@ export const BOT_COMPANY_RANGE = 6;
 /** It keeps walking away this long, then does not bolt again for a while, seconds. */
 export const BOT_WARY_TIME = 6;
 export const BOT_WARY_REST = 12;
+
+/**
+ * The shortest time a mini-game window can honestly take, seconds, by task kind
+ * (cargo has no window). A «done» that arrives sooner is treated as closing the
+ * window without finishing: the match itself checks it, so an online player
+ * cannot tick off tasks by just saying so. Keep these well below real play.
+ */
+export const TASK_MIN_TIME: Record<string, number> = {
+  modus: 2,
+  copycat: 2,
+  news: 2,
+  lines: 2,
+  curve: 1,
+  gpu: 3,
+  slot: 0.6,
+  badge: 0.4,
+};
+
