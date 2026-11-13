@@ -184,3 +184,9 @@ Entry format (≤8 lines):
 - Fix: none needed; to preview a branch, remove the pattern in `vercel.json` or deploy it manually in Vercel.
 - Seen: 2026-11-13
 
+### Measuring Goose balance
+- Symptom: need to know how a rule or number change shifts who wins.
+- Fix: `BALANCE=100 BALANCE_OUT=/tmp/b.txt npx vitest run src/sim/balance.test.ts` plays 100 bot-only matches (5–10 min; run in the background) and prints wins and how they came. Spread between runs of 100 is about ±9, so compare whole series, not single seeds.
+- Note: sabotage time-outs dominate Goose wins; `BOT_FIX_CHANCE` is the strongest lever (0.32 → 73, 0.5 with longer timers → 25 on the old floor).
+- Seen: 2026-11-13
+
