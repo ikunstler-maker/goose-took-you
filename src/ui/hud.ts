@@ -1,3 +1,4 @@
+import { SABOTAGE_COOLDOWN } from '../config';
 import { getLang, setLang, t, type I18nKey, type Lang } from '../i18n';
 import type { RoomType } from '../sim/prefabs';
 import type { Task } from '../sim/tasks';
@@ -136,8 +137,10 @@ export function createHud(handlers: { onNewOffice(): void; onLangChange(lang: La
         ? ''
         : w.sabotage
           ? t('hud.sabotage.active')
-          : w.sabotageCooldown > 0
-            ? t('hud.sabotage.wait', { seconds: Math.ceil(w.sabotageCooldown) })
+          : w.sabotageCooldown > SABOTAGE_COOLDOWN
+            ? t('hud.sabotage.first', { seconds: Math.ceil(w.sabotageCooldown) })
+            : w.sabotageCooldown > 0
+              ? t('hud.sabotage.wait', { seconds: Math.ceil(w.sabotageCooldown) })
             : t('hud.sabotage.ready');
     if (line !== sabotageShown) {
       sabotageShown = line;

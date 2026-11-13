@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CALL_TIME, INTERACT_RANGE, OVERHEAT_TIME, SABOTAGE_COOLDOWN, TICK } from '../config';
+import { CALL_TIME, INTERACT_RANGE, OVERHEAT_TIME, SABOTAGE_COOLDOWN, SABOTAGE_FIRST, TICK } from '../config';
 import { cellCentre, findPath, fitsIn } from './nav';
 import { propDistance } from './sabotage';
 import { applyCommand, createWorld, LOCAL_PLAYER, me, step, type Participant, type Role, type SimEvent, type WorldState } from './world';
@@ -41,7 +41,7 @@ function standAt(state: WorldState, p: Participant, point: number): void {
 /** Player Goose with the cooldown over; bots frozen. */
 function ready(seed: number): WorldState {
   const state = started(seed, 'goose');
-  wait(state, SABOTAGE_COOLDOWN + 0.1);
+  wait(state, SABOTAGE_FIRST + 0.1);
   return state;
 }
 
@@ -68,7 +68,7 @@ describe('sabotages', () => {
   it('only the Goose starts one, after the cooldown, one at a time', () => {
     const state = started(7, 'goose');
     expect(sabotage(state, 'overheat')).toEqual([]);
-    wait(state, SABOTAGE_COOLDOWN + 0.1);
+    wait(state, SABOTAGE_FIRST + 0.1);
     expect(sabotage(state, 'overheat', 1)).toEqual([]);
     expect(sabotage(state, 'overheat')).toEqual([{ type: 'sabotageStarted', who: LOCAL_PLAYER, kind: 'overheat' }]);
     expect(sabotage(state, 'call')).toEqual([]);
@@ -163,7 +163,7 @@ describe('bots and sabotages', () => {
     for (let seed = 1; seed <= 6; seed++) {
       for (const kind of ['overheat', 'call'] as const) {
         const state = started(seed, 'goose', true);
-        wait(state, SABOTAGE_COOLDOWN + 0.1);
+        wait(state, SABOTAGE_FIRST + 0.1);
         if (state.phase !== 'play') continue;
         runs++;
         sabotage(state, kind);
@@ -180,7 +180,7 @@ describe('bots and sabotages', () => {
     let startedCount = 0;
     for (let seed = 1; seed <= 4; seed++) {
       const state = started(seed, 'chick', true);
-      const events = wait(state, 150);
+      const events = wait(state, SABOTAGE_FIRST + 150);
       if (events.some((e) => e.type === 'sabotageStarted')) startedCount++;
     }
     expect(startedCount).toBeGreaterThanOrEqual(3);

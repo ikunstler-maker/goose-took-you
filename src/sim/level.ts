@@ -7,6 +7,7 @@ import {
   NOOKS,
   PLAYER_RADIUS,
   ROOM_FILL_DENSITY,
+  ROOM_MARGIN,
   ROOM_MAX,
   LOBBY_SECTOR,
   SECTORS,
@@ -190,8 +191,8 @@ function placeRooms(b: Build): Room[] {
   const rooms: Room[] = [];
 
   const offset = (slot: number, size: number): number => {
-    const min = slot * sector + 3;
-    const max = Math.max(min, slot * sector + sector - 3 - size);
+    const min = slot * sector + ROOM_MARGIN;
+    const max = Math.max(min, slot * sector + sector - ROOM_MARGIN - size);
     let value = min + rng.int(max - min + 1);
     const pushed = rng.next() < FACADE_CHANCE;
     if (pushed && slot === 0) value = 1;

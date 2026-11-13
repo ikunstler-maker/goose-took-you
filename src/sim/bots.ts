@@ -42,6 +42,10 @@ import {
   GOOSE_SABOTAGE_MIN,
   GOOSE_SABOTAGE_MAX,
   INTERACT_RANGE,
+  BOT_COMPANY_RANGE,
+  BOT_WARY_RANGE,
+  BOT_WARY_REST,
+  BOT_WARY_TIME,
 } from '../config';
 import { cellCentre, findPath, fitsIn, nearestFree, type NavGrid } from './nav';
 import { createRng, type Rng } from './rng';
@@ -62,6 +66,8 @@ export type Goal =
   | { kind: 'hunt'; target: number }
   /** Goose: stand at one of its own desks pretending to work. */
   | { kind: 'pose'; task: number }
+  /** Chick alone with its suspect: walk over to this other participant. */
+  | { kind: 'flee'; to: number }
   /** Chick that saw a pack: press the red meeting button. */
   | { kind: 'button' }
   /** Goose: get to this rug to escape under it. */
@@ -128,6 +134,9 @@ export interface Brain {
   sabotageIn: number;
   /** Chick only: what it saw that points at someone; brought up at the next meeting. */
   suspicion: Suspicion | null;
+  /** Chick only: seconds left of walking away from its suspect, and until it may bolt again. */
+  wary: number;
+  waryRest: number;
   /** Sightings since the last meeting, newest first; turned into meeting lines. */
   notes: Note[];
 }
@@ -160,6 +169,8 @@ export function createBrain(rng: Rng): Brain {
     spooked: false,
     bait: false,
     suspicion: null,
+    wary: 0,
+    waryRest: 0,
     notes: [],
     // Rolled on first use, so the brains' start-up rolls stay as they were.
     sabotageIn: -1,
@@ -289,6 +300,34 @@ function fixGoal(state: WorldState, bot: Participant): number | null {
   return open.length > 0 ? open[bot.id % open.length]! : null;
 }
 
+/** The nearest living participant who is not the bot's suspect: someone to stand next to. */
+function company(state: WorldState, bot: Participant): number | null {
+  const suspect = bot.brain!.suspicion?.who ?? -1;
+  let best: number | null = null;
+  let bestD = Infinity;
+  for (const o of state.participants) {
+    if (o === bot || o.id === suspect || !o.alive || o.under !== null) continue;
+    const d = Math.hypot(o.x - bot.x, o.z - bot.z);
+    if (d < bestD) {
+      best = o.id;
+      bestD = d;
+    }
+  }
+  return best;
+}
+
+/** A bot chick left alone in sight of its suspect gets nervous; true when it should walk off now. */
+function aloneWithSuspect(state: WorldState, bot: Participant): boolean {
+  const s = bot.brain!.suspicion;
+  if (!s) return false;
+  const suspect = state.participants[s.who]!;
+  if (!suspect.alive || suspect.under !== null) return false;
+  if (!canSee(state.level, bot.x, bot.z, suspect.x, suspect.z, Math.min(BOT_WARY_RANGE, sightRadius(state)))) return false;
+  return !state.participants.some(
+    (o) => o !== bot && o !== suspect && o.alive && o.under === null && canSee(state.level, bot.x, bot.z, o.x, o.z, Math.min(BOT_COMPANY_RANGE, sightRadius(state))),
+  );
+}
+
 function chooseGoal(state: WorldState, bot: Participant, avoid: number | null): Goal {
   if (bot.role === 'goose') {
     // The Goose's task list is a cover: it only poses at its desks, strolls and stalks.
@@ -304,6 +343,10 @@ function chooseGoal(state: WorldState, bot: Participant, avoid: number | null): 
   if (sure && bot.buttonUses > 0 && state.buttonCooldown === 0 && bot.carrying === null) return { kind: 'button' };
   const fix = fixGoal(state, bot);
   if (fix !== null) return { kind: 'fix', point: fix };
+  if (bot.brain && bot.brain.wary > 0) {
+    const friend = company(state, bot);
+    if (friend !== null) return { kind: 'flee', to: friend };
+  }
   if (bot.carrying !== null) {
     const box = state.boxes.find((b) => b.id === bot.carrying)!;
     return { kind: 'deliver', task: box.task };
@@ -343,6 +386,10 @@ function destinations(state: WorldState, nav: NavGrid, bot: Participant, goal: G
         if (open.length > 0) return [roomCell(state, nav, state.stations[open[rng.int(open.length)]!.station]!.room, rng)];
       }
       return [roomCell(state, nav, rng.int(state.level.rooms.length), rng)];
+    }
+    case 'flee': {
+      const friend = state.participants[goal.to]!;
+      return [nearestFree(nav, friend.x, friend.z, 4)];
     }
     case 'hunt': {
       // Where the Goose last saw its prey, not where the prey really is.
@@ -546,6 +593,16 @@ export function thinkBot(state: WorldState, nav: NavGrid, bot: Participant, dt: 
 
   brain.avoidLeft = Math.max(0, brain.avoidLeft - dt);
   if (brain.avoidLeft === 0) brain.avoid = null;
+  if (bot.role === 'chick') {
+    // Nobody likes to be left alone with the one they suspect.
+    brain.waryRest = Math.max(0, brain.waryRest - dt);
+    if (brain.wary > 0) brain.wary = Math.max(0, brain.wary - dt);
+    else if (brain.waryRest === 0 && aloneWithSuspect(state, bot)) {
+      brain.wary = BOT_WARY_TIME;
+      brain.waryRest = BOT_WARY_TIME + BOT_WARY_REST;
+      events.push(...send(bot.id, { type: 'think', thought: 'doubt' }));
+    }
+  }
   // Re-think when the goal is gone or no longer what matters most.
   const wanted = chooseGoal(state, bot, brain.avoid);
   const sameWander = brain.goal?.kind === 'wander' && wanted.kind === 'wander';
@@ -651,7 +708,7 @@ export function thinkBot(state: WorldState, nav: NavGrid, bot: Participant, dt: 
         brain.atGoal = 0;
         return events;
       }
-      if (goal.kind === 'wander' || goal.kind === 'hunt' || brain.atGoal > BOT_GIVE_UP) {
+      if (goal.kind === 'wander' || goal.kind === 'flee' || goal.kind === 'hunt' || brain.atGoal > BOT_GIVE_UP) {
         if (goal.kind === 'carpet') brain.escape = null;
         if (goal.kind === 'task') {
           brain.avoid = goal.task;

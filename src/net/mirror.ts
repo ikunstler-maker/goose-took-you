@@ -69,7 +69,7 @@ export function applyView(world: WorldState, view: WireView, changed: Partial<Wi
         p.moving = false;
         p.carrying = null;
         p.tell = 0;
-        p.tellBubble = false;
+        p.honk = 0;
         targets.delete(seat.id);
         continue;
       }
@@ -88,7 +88,7 @@ export function applyView(world: WorldState, view: WireView, changed: Partial<Wi
       p.thought = body.thought;
       p.carrying = body.carrying;
       p.tell = body.tell;
-      p.tellBubble = body.tellBubble;
+      p.honk = body.honk;
     }
     const self = world.participants[you]!;
     const mine = view.self;

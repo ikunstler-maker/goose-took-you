@@ -1,8 +1,8 @@
-import { PLAYER_SAY_COOLDOWN } from '../config';
+import { HONK_HEAR_RANGE, PLAYER_SAY_COOLDOWN } from '../config';
 import type { Box } from './cargo';
 import { cameraSpots, cameraSees } from './cameras';
 import type { Carpet } from './carpets';
-import type { ChatLine, MeetingStage } from './meeting';
+import { seesHonk, type ChatLine, type MeetingStage } from './meeting';
 import type { Sabotage, SabotageKind } from './sabotage';
 import type { Task } from './tasks';
 import {
@@ -71,9 +71,10 @@ export interface BodyView {
   emotion: Emotion;
   thought: Thought | null;
   carrying: number | null;
-  /** The Goose's neck stretch, seconds left; the one honest tell. */
+  /** The Goose's neck stretch, seconds left. */
   tell: number;
-  tellBubble: boolean;
+  /** Seconds left of the «га-га» bubble, or 0 when this viewer is not placed to see it. */
+  honk: number;
   /** Busy with a task or the cameras: stands still. */
   busy: boolean;
 }
@@ -134,7 +135,7 @@ export function seesBody(state: WorldState, viewer: Participant, p: Participant)
   return cellSeen(state, viewer.id, p.x, p.z) || onCamera(state, viewer, p.x, p.z);
 }
 
-function bodyOf(p: Participant): BodyView {
+function bodyOf(state: WorldState, viewer: Participant, p: Participant): BodyView {
   return {
     x: p.x,
     z: p.z,
@@ -144,7 +145,7 @@ function bodyOf(p: Participant): BodyView {
     thought: p.thought,
     carrying: p.carrying,
     tell: p.tell,
-    tellBubble: p.tellBubble,
+    honk: seesHonk(state, viewer, p) ? p.honk : 0,
     busy: p.activeTask !== null || p.watching,
   };
 }
@@ -164,7 +165,7 @@ export function viewFor(state: WorldState, you: number): PlayerView {
     human: !p.isBot,
     away: isAway(p),
     role: p === viewer || over || p.ejected ? p.role : null,
-    body: seesBody(state, viewer, p) ? bodyOf(p) : null,
+    body: seesBody(state, viewer, p) ? bodyOf(state, viewer, p) : null,
   }));
   const boxes = state.boxes.filter((b) => {
     if (b.carrier !== null) return seats[b.carrier]!.body !== null;
@@ -244,6 +245,12 @@ export function eventsFor(state: WorldState, you: number, events: readonly SimEv
     if (event.type === 'chat' && viewer.alive && !state.participants[event.who]!.alive) continue;
     if (PUBLIC.has(event.type) || !('who' in event)) {
       out.push(event);
+      continue;
+    }
+    if (event.type === 'honked') {
+      // Heard by distance alone, walls or not; only the Goose knows it was itself.
+      if (event.who === you) out.push(event);
+      else if (Math.hypot(event.x - viewer.x, event.z - viewer.z) <= HONK_HEAR_RANGE) out.push({ ...event, who: -1 });
       continue;
     }
     const who = state.participants[event.who]!;
