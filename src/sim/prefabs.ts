@@ -64,7 +64,8 @@ export type PropKind =
   | 'bigWinSign'
   | 'cameraDesk'
   | 'badgeScanner'
-  | 'badgeRack';
+  | 'badgeRack'
+  | 'greenButton';
 
 /** Quarter turns: 0 = front faces south (+z), 1 = east, 2 = north, 3 = west. */
 export type Rot = 0 | 1 | 2 | 3;
@@ -142,7 +143,9 @@ export const PREFABS: Record<RoomType, PrefabProp[]> = {
     p('stool', 1.3, 1.1, 0.5, 0.5),
     p('desk', -4, -4.8, 2, 1),
     p('desk', 4, -4.8, 2, 1),
-    ...corners('monstera').slice(2),
+    // The Giant Green Button stands across the room from the edit desk: a dash away.
+    p('greenButton', 4.9, 4.7, 1.2, 1.2),
+    p('monstera', -5, 5, 0.8, 0.8),
     p('ficus', -5, -2.6, 0.8, 0.8),
   ],
   cargo: [

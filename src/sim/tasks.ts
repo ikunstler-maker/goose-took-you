@@ -62,6 +62,8 @@ export interface Task {
   target: number | null;
   /** Cargo only: the box has been taken from the shelf. */
   started: boolean;
+  /** News only: seconds left to press the Giant Green Button; 0 when the edit is not waiting for it. */
+  rush: number;
 }
 
 export function findStations(level: Level): Station[] {
@@ -97,6 +99,7 @@ export function assignTasks(stations: Station[], seed: number, owner: number): T
     done: false,
     target: null,
     started: false,
+    rush: 0,
   }));
 }
 
@@ -117,7 +120,7 @@ export function taskInReach(level: Level, stations: Station[], tasks: Task[], ow
   let best: Task | null = null;
   let bestDistance = INTERACT_RANGE;
   for (const task of tasks) {
-    if (task.done || task.started || task.owner !== owner) continue;
+    if (task.done || task.started || task.rush > 0 || task.owner !== owner) continue;
     const distance = stationDistance(level, stations[task.station]!, x, z);
     if (distance <= bestDistance) {
       best = task;

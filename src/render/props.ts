@@ -532,9 +532,8 @@ const BUILDERS: Record<PropKind, (variant: number) => THREE.Group> = {
 
   dualStation: () => {
     const g = group(deskBase(4.6, 1.4, WHITE), at(monitor(0.9, 0.55, 0xff8f6b), -1.5, 0.8, -0.35), at(monitor(0.9, 0.55, 0x6bd6ff), 1.5, 0.8, -0.35), keyboard(-1.5, 0.25), keyboard(1.5, 0.25));
-    const dome = sphere(0.32, glow(0x33e06a), 0, 0.88, 0.05, 2);
-    dome.scale.y = 0.55;
-    g.add(cylinder(0.42, 0.46, 0.1, METAL, 0, 0.85, 0.05), dome);
+    // The shared Stack tray between the two editors; the Giant Green Button is its own prop across the room.
+    g.add(box(0.7, 0.06, 0.5, METAL, 0, 0.83, 0.05), box(0.5, 0.04, 0.36, mat(0xff8f6b), 0, 0.88, 0.05, false));
     return g;
   },
 
@@ -663,6 +662,18 @@ const BUILDERS: Record<PropKind, (variant: number) => THREE.Group> = {
       box(0.06, 0.06, 0.9, mat(0xe5433d), 0, 0.8, 0.7),
       box(0.06, 0.06, 0.9, WHITE, 0, 0.6, 0.7),
     ),
+
+  // The Giant Green Button: a chunky pedestal with a glowing dome. The dome is tagged so it can sink when pressed.
+  greenButton: () => {
+    const dome = sphere(0.5, glow(0x38d66b), 0, 0.86, 0, 2);
+    dome.scale.y = 0.55;
+    return group(
+      cylinder(0.6, 0.66, 0.7, mat(0xf2e9d8), 0, 0.35, 0, 20),
+      cylinder(0.56, 0.6, 0.14, DARK, 0, 0.77, 0, 20),
+      dome,
+      cylinder(0.7, 0.7, 0.03, mat(0xffc93d), 0, 0.015, 0, 24),
+    );
+  },
 
   // Wall rack with key cards on hooks.
   badgeRack: () => {

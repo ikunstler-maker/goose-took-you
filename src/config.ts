@@ -87,10 +87,13 @@ export const NEWS_TILE_EVERY = 0.7;
 /** How often the partner's node lights up, and how fast the bot partner reacts, seconds. */
 export const NEWS_NODE_EVERY = 1.6;
 export const NEWS_BOT_REACTION = 0.5;
-/** Delay before the bot partner presses the Giant Green Button too, seconds. */
-export const NEWS_BOT_BUTTON = 0.8;
 /** Length of the «Екстрені Новини» broadcast in the Lobby, seconds. */
 export const NEWS_BROADCAST_TIME = 12;
+/** Seconds to reach and press the Giant Green Button after the edit is done; otherwise edit again. */
+export const NEWS_BUTTON_TIME = 5;
+/** Confetti over the button: pieces and seconds in the air. */
+export const CONFETTI_PIECES = 260;
+export const CONFETTI_TIME = 4.5;
 
 /** «Вантажник»: chance a box slips out of the wings on one delivery route (BOX_SLIP_CHANCE). */
 export const BOX_SLIP_CHANCE = 0.12;

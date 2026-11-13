@@ -1,5 +1,4 @@
 import {
-  NEWS_BOT_BUTTON,
   NEWS_BOT_REACTION,
   NEWS_FILES,
   NEWS_GRID,
@@ -13,7 +12,7 @@ import { createRng, type Rng } from '../../sim/rng';
 /** Number of output nodes on the partner's side. */
 export const NEWS_NODES = 3;
 
-/** A pixel picture flashing in the grid. Its look is an abstract mosaic picked by `art`. */
+/** A thumbnail flashing in the grid. Its look is a chibi beach card picked by `art` (see src/art/beach.ts). */
 export interface Tile {
   id: number;
   cell: number;
@@ -23,8 +22,8 @@ export interface Tile {
 
 export interface NewsState {
   rng: Rng;
-  /** waiting: partner not seated yet · work: catching files · button: both must press · won */
-  phase: 'waiting' | 'work' | 'button' | 'won';
+  /** waiting: partner not seated yet · work: catching files · won: cut, off to the Giant Green Button in the room */
+  phase: 'waiting' | 'work' | 'won';
   waitLeft: number;
   /** True when the partner is a bot (nobody joined in time). */
   botPartner: boolean;
@@ -39,9 +38,6 @@ export interface NewsState {
   /** Seconds the bot partner has been staring at a lit node with a file ready. */
   botWait: number;
   delivered: number;
-  pressedSelf: boolean;
-  pressedPartner: boolean;
-  botButtonIn: number;
 }
 
 export function createNews(seed: number): NewsState {
@@ -58,9 +54,6 @@ export function createNews(seed: number): NewsState {
     nodeIn: NEWS_NODE_EVERY / 2,
     botWait: 0,
     delivered: 0,
-    pressedSelf: false,
-    pressedPartner: false,
-    botButtonIn: NEWS_BOT_BUTTON,
   };
 }
 
@@ -89,7 +82,7 @@ function partnerStep(state: NewsState, dt: number): void {
   state.litNode = -1;
   state.nodeIn = NEWS_NODE_EVERY;
   if (state.delivered >= NEWS_FILES) {
-    state.phase = 'button';
+    state.phase = 'won';
     state.tiles = [];
   }
 }
@@ -113,13 +106,6 @@ export function tickNews(state: NewsState, dt: number): void {
       }
       partnerStep(state, dt);
       return;
-    case 'button':
-      if (state.botPartner && !state.pressedPartner) {
-        state.botButtonIn -= dt;
-        if (state.botButtonIn <= 0) state.pressedPartner = true;
-      }
-      if (state.pressedSelf && state.pressedPartner) state.phase = 'won';
-      return;
     case 'won':
       return;
   }
@@ -133,10 +119,4 @@ export function catchTile(state: NewsState, id: number): boolean {
   state.stack.push(state.tiles[index]!.art);
   state.tiles.splice(index, 1);
   return true;
-}
-
-export function pressButton(state: NewsState): void {
-  if (state.phase !== 'button') return;
-  state.pressedSelf = true;
-  if (state.pressedPartner) state.phase = 'won';
 }

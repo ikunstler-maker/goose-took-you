@@ -28,7 +28,10 @@ export type SoundName =
   | 'fix'
   | 'fixed'
   | 'win'
-  | 'lose';
+  | 'lose'
+  /** Giant Green Button: the confetti pop, then a cheering crowd. */
+  | 'splash'
+  | 'ovation';
 
 export interface Sound {
   /** Call from a user gesture: browsers keep audio silent until then. */
@@ -167,6 +170,20 @@ export function createSound(volume = SOUND_DEFAULT_VOLUME, muted = false): Sound
     fix: (g) => notes('triangle', [440, 587], 0.08, 0.12, 0.14 * g),
     fixed: (g) => notes('triangle', [392, 523, 659, 784], 0.1, 0.22, 0.14 * g),
     win: (g) => notes('triangle', [523, 523, 659, 784, 659, 784, 1047], 0.13, 0.26, 0.16 * g),
+    splash: (g) => {
+      hiss('highpass', 1800, 0, 0.35, 0.4 * g);
+      hiss('lowpass', 600, 0, 0.18, 0.35 * g);
+      tone('sine', 300, 900, 0, 0.12, 0.18 * g);
+    },
+    ovation: (g) => {
+      // Applause: a swell of many short claps, plus a few rising whoops.
+      for (let i = 0; i < 70; i++) {
+        const at = 0.1 + (i * 0.037) + ((i * 7919) % 13) * 0.004;
+        const swell = Math.sin((Math.PI * i) / 70);
+        hiss('bandpass', 1500 + ((i * 331) % 1400), at, 0.05, (0.06 + 0.12 * swell) * g);
+      }
+      [0.5, 1.1, 1.7].forEach((at, i) => tone('triangle', 500 + i * 90, 950 + i * 120, at, 0.32, 0.05 * g));
+    },
     lose: (g) => notes('sawtooth', [392, 349, 311, 262], 0.22, 0.34, 0.1 * g),
   };
 

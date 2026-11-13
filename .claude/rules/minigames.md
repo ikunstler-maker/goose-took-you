@@ -10,5 +10,5 @@ paths:
 - Timers, counts and thresholds live in `src/config.ts`.
 - All copy through i18n keys, UA + RU.
 - Visual tasks emit a sim event so the 3D room effect is visible to everyone nearby.
-- "Censored" content is abstract pixel-mosaic blocks only; never recognisable or sexual imagery.
+- "Censored" content: abstract pixel-mosaic blocks, or the chibi beach figures from `src/art/beach.ts` (cartoon blobs, no anatomy, mosaic over chest and hips); never realistic, recognisable or sexual imagery.
 - New mini-game → add it to the SPEC room table and the GLOSSARY in the same PR.

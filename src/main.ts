@@ -3,6 +3,7 @@ import { createSound, type SoundName } from './audio/sound';
 import { createMinigameHost } from './minigames/host';
 import { createBoxes } from './render/boxes';
 import { createBroadcast, type BroadcastView } from './render/broadcast';
+import { createConfetti } from './render/confetti';
 import { createCarpets, type CarpetsView } from './render/carpets';
 import { createChicks } from './render/chicks';
 import { createTaskMarkers, type TaskMarkers } from './render/markers';
@@ -92,6 +93,8 @@ function rebuildOffice(): void {
   stage.fitSun(world.level.size);
 }
 
+const confetti = createConfetti();
+stage.scene.add(confetti.root);
 const minimap = createMinimap();
 const cameras = createCameraScreen(() => send({ type: 'stopWatching' }));
 const hud = createHud({
@@ -166,6 +169,13 @@ function hear(event: SimEvent): void {
     sound.play(action, event.who === LOCAL_PLAYER || packedMe ? 1 : loudness(actor.x, actor.z));
   }
   if (event.type === 'sabotageEnded' && event.fixed) sound.play('fixed');
+  if (event.type === 'newsLaunched') {
+    // Confetti and cheers reach whoever is close enough to see the button.
+    confetti.burst(event.x, event.z);
+    const gain = event.who === LOCAL_PLAYER ? 1 : loudness(event.x, event.z);
+    sound.play('splash', gain);
+    sound.play('ovation', gain);
+  }
   if (event.type === 'taskOpened' && event.who === LOCAL_PLAYER) sound.play('open');
   // A delivered box pays out like a won mini-game; window games ring when their own window closes.
   if (event.type === 'taskDone' && event.who === LOCAL_PLAYER && world.tasks[event.taskId]!.kind === 'cargo') sound.play('jackpot');
@@ -284,6 +294,20 @@ function handle(events: SimEvent[]): void {
         meeting.hide();
         dropInput();
         screens.showOver(world);
+        break;
+      case 'rushStarted':
+        hud.setTasks(world);
+        markers?.refresh(world);
+        break;
+      case 'rushFailed':
+        sound.play('bonk');
+        hud.shout('hud.rushFailed');
+        hud.setTasks(world);
+        markers?.refresh(world);
+        break;
+      case 'newsLaunched':
+        hud.shout('hud.newsLaunched');
+        hud.setTasks(world);
         break;
       case 'badgeTaken':
         sound.play('click');
@@ -466,7 +490,7 @@ function frame(now: number): void {
     handle(step(world, TICK));
     minigames.tick(TICK);
     // The pack countdown in the prompt ticks down by itself.
-    if (world.tick % 15 === 0 && me(world).canPack !== null) hud.setTasks(world);
+    if (world.tick % 15 === 0 && (me(world).canPack !== null || world.tasks.some((task) => task.owner === LOCAL_PLAYER && task.rush > 0))) hud.setTasks(world);
     accumulator -= TICK;
   }
 
@@ -485,6 +509,7 @@ function frame(now: number): void {
   markers?.update(time);
   boxes.update(world, time);
   broadcast?.update(world.broadcast, time);
+  confetti.update(dt);
   carpets?.update(world, time);
   stage.follow(player.x, player.z, dt);
   stage.render();

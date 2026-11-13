@@ -147,6 +147,8 @@ export function startMeeting(state: WorldState, caller: Participant, victim: num
   const roomsBefore = state.participants.map((p) => roomType(state, p.roomId));
   const buddies = state.participants.map((p) => buddyOf(state, p));
 
+  // A meeting cuts a button rush short: that edit is simply redone later.
+  for (const task of state.tasks) task.rush = 0;
   for (const p of state.participants) {
     if (p.activeTask !== null) {
       events.push({ type: 'taskClosed', who: p.id, taskId: p.activeTask, done: false });

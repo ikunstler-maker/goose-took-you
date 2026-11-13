@@ -48,8 +48,9 @@ export function createTaskMarkers(world: WorldState): TaskMarkers {
         const arrow = arrows.get(task.id);
         if (!arrow) continue;
         arrow.visible = !task.done && !task.started;
-        // A badge task moves from the card rack to the reader.
-        const prop = next.level.props[next.stations[task.station]!.prop]!;
+        // A badge task moves from the card rack to the reader; a cut news edit points at the Giant Green Button.
+        const button = task.rush > 0 ? next.level.props.find((p) => p.hub && p.kind === 'greenButton') : undefined;
+        const prop = button ?? next.level.props[next.stations[task.station]!.prop]!;
         arrow.position.x = prop.x;
         arrow.position.z = prop.z;
       }
