@@ -1,9 +1,21 @@
-import { PLAYER_SAY_COOLDOWN } from '../config';
-import { createWorld, setLocalSeat, type WorldState } from '../sim/world';
+import { PLAYER_SAY_COOLDOWN, PLAYER_SPEED } from '../config';
+import { createWorld, setLocalSeat, walk, type WorldState } from '../sim/world';
 import { unpackSight, type WireView } from './protocol';
 
 /** Where the server last saw each visible seat; the browser glides its copy there. */
 export type Targets = Map<number, { x: number; z: number }>;
+
+/** The direction this browser's player is pushing right now (unit vector or zero), and seconds since they let go. */
+export interface OwnInput {
+  x: number;
+  z: number;
+  still: number;
+}
+
+/** The server's word about our own chick is this old at worst, seconds: no correction within that much walking. */
+const LAG_ALLOWANCE = 0.4;
+/** After letting go the own chick stays where it stopped this long before settling on the server's spot, seconds. */
+const SETTLE_AFTER = 0.5;
 
 /** Seats out of sight are parked far outside the office, where nothing draws them. */
 const NOWHERE = -1000;
@@ -30,7 +42,7 @@ export function createMirror(view: WireView): WorldState {
 }
 
 /** Writes the merged snapshot into the copy. `changed` names the parts that just arrived. */
-export function applyView(world: WorldState, view: WireView, changed: Partial<WireView>, targets: Targets): void {
+export function applyView(world: WorldState, view: WireView, changed: Partial<WireView>, targets: Targets, own: OwnInput | null = null): void {
   const you = view.you;
   world.phase = view.phase;
   world.winner = view.winner;
@@ -67,8 +79,11 @@ export function applyView(world: WorldState, view: WireView, changed: Partial<Wi
         p.z = body.z;
       }
       targets.set(seat.id, { x: body.x, z: body.z });
-      p.facing = body.facing;
-      p.moving = body.moving;
+      // While the player pushes, their own chick is walked here, ahead of the server.
+      if (!(seat.id === you && own && (own.x !== 0 || own.z !== 0))) {
+        p.facing = body.facing;
+        p.moving = body.moving;
+      }
       p.emotion = body.emotion;
       p.thought = body.thought;
       p.carrying = body.carrying;
@@ -125,11 +140,32 @@ export function applyView(world: WorldState, view: WireView, changed: Partial<Wi
   }
 }
 
-/** Every frame: visible seats glide to where the server last put them. */
-export function glide(world: WorldState, targets: Targets, dt: number): void {
+/** May this browser walk its own chick right now, without asking? The same conditions the match uses. */
+const canWalk = (world: WorldState, you: number): boolean => {
+  const p = world.participants[you]!;
+  return world.phase === 'play' && p.alive && p.activeTask === null && !p.watching && p.under === null;
+};
+
+/**
+ * Every frame: visible seats glide to where the server last put them. The
+ * player's own chick walks at once by the same rules the server uses, and is
+ * corrected only when the two disagree by more than the connection delay explains.
+ */
+export function glide(world: WorldState, targets: Targets, dt: number, you = -1, own: OwnInput | null = null): void {
   const k = 1 - Math.exp(-dt * GLIDE);
   for (const [id, target] of targets) {
     const p = world.participants[id]!;
+    if (id === you && own && canWalk(world, you)) {
+      const pushing = own.x !== 0 || own.z !== 0;
+      own.still = pushing ? 0 : own.still + dt;
+      if (pushing) {
+        p.facing = Math.atan2(own.x, own.z);
+        p.moving = true;
+        walk(world.level, world.buckets, p, own.x, own.z, dt);
+      }
+      const off = Math.hypot(target.x - p.x, target.z - p.z);
+      if (own.still < SETTLE_AFTER && off < PLAYER_SPEED * LAG_ALLOWANCE + 0.3) continue;
+    }
     p.x += (target.x - p.x) * k;
     p.z += (target.z - p.z) * k;
   }

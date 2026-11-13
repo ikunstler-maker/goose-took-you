@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { Room } from '../../server/room';
 import { LOCAL_PLAYER, me, progress, setLocalSeat } from '../sim/world';
-import { applyView, createMirror, glide, type Targets } from './mirror';
+import { PLAYER_SPEED } from '../config';
+import { applyView, createMirror, glide, type OwnInput, type Targets } from './mirror';
 import { packSight, unpackSight, type ServerMessage, type WireView } from './protocol';
 
 afterEach(() => setLocalSeat(0));
@@ -69,6 +70,54 @@ describe('the browser copy of an online match', () => {
     }
     // After twelve seconds the bots have scattered: most of the office is out of sight.
     expect(hidden).toBeGreaterThan(2);
+  });
+
+  it('walks its own chick at once and ends up where the server says', () => {
+    const room = new Room('ABCDE', () => 7, () => 'token');
+    const a = browser();
+    const idA = room.join(a.send, null) as number;
+    room.receive(idA, { t: 'cmd', c: { type: 'start' } });
+    room.tick(0.05);
+    const world = createMirror(a.view);
+    const targets: Targets = new Map();
+    const own: OwnInput = { x: 0, z: 0, still: 0 };
+    applyView(world, a.view, a.view, targets, own);
+    const seat = a.view.you;
+    const startX = me(world).x;
+
+    // The player pushes right; the command reaches the server 0.2 s later.
+    own.x = 1;
+    for (let t = 0; t < 0.2; t += 0.05) {
+      room.tick(0.05);
+      applyView(world, a.view, a.changed(), targets, own);
+      glide(world, targets, 0.05, seat, own);
+    }
+    // Already walking here, although the server has not moved the chick yet.
+    expect(me(world).x - startX).toBeGreaterThan(PLAYER_SPEED * 0.15);
+    expect(me(world).moving).toBe(true);
+    expect(room.state.participants[seat]!.x).toBe(startX);
+
+    room.receive(idA, { t: 'cmd', c: { type: 'move', x: 1, z: 0 } });
+    let worst = 0;
+    for (let t = 0; t < 2; t += 0.05) {
+      room.tick(0.05);
+      applyView(world, a.view, a.changed(), targets, own);
+      glide(world, targets, 0.05, seat, own);
+      worst = Math.max(worst, Math.abs(me(world).x - room.state.participants[seat]!.x));
+    }
+    // Never further ahead than the delay explains, walls included.
+    expect(worst).toBeLessThan(PLAYER_SPEED * 0.4 + 0.6);
+
+    // Letting go: the server hears it at once here, and the copy settles on the server's spot.
+    own.x = 0;
+    room.receive(idA, { t: 'cmd', c: { type: 'move', x: 0, z: 0 } });
+    for (let t = 0; t < 2; t += 0.05) {
+      room.tick(0.05);
+      applyView(world, a.view, a.changed(), targets, own);
+      glide(world, targets, 0.05, seat, own);
+    }
+    expect(Math.hypot(me(world).x - room.state.participants[seat]!.x, me(world).z - room.state.participants[seat]!.z)).toBeLessThan(0.05);
+    expect(me(world).moving).toBe(false);
   });
 
   it('shows a meeting without telling who voted for whom', () => {

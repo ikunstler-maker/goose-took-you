@@ -7,7 +7,9 @@ import {
   MEETING_RESULT,
   MEETING_SEAT_RADIUS,
   MEETING_TALK,
+  MEETING_TALK_PEOPLE,
   MEETING_VOTE,
+  MEETING_VOTE_PEOPLE,
   PLAYER_HINTS_MAX,
   PLAYER_HINTS_MET,
   PLAYER_SAY_COOLDOWN,
@@ -251,7 +253,7 @@ export function startMeeting(state: WorldState, caller: Participant, victim: num
     victim,
     stage: 'talk',
     elapsed: 0,
-    timeLeft: MEETING_TALK,
+    timeLeft: talkTime(state),
     chat: [],
     votes: state.participants.map(() => null),
     plan: planBots(state, caller, victim, roomsBefore, buddies, rng),
@@ -311,7 +313,7 @@ function planBots(
     plan.push({ at, who, line: { who, kind, about, room }, vote: null, firm: false });
   };
   const vote = (who: number, target: number, firm = false): void => {
-    plan.push({ at: MEETING_TALK + between(rng, 1, MEETING_VOTE * 0.75), who, line: null, vote: target, firm });
+    plan.push({ at: talkTime(state) + between(rng, 1, voteTime(state) * 0.75), who, line: null, vote: target, firm });
   };
   const living = state.participants.filter((p) => p.alive);
   const bots = living.filter((p) => p.brain);
@@ -350,7 +352,7 @@ function planBots(
   for (const b of order) {
     const s = b.brain!.suspicion;
     const room = roomsBefore[b.id] ?? null;
-    const t = Math.min(at, MEETING_TALK + MEETING_VOTE * 0.5);
+    const t = Math.min(at, talkTime(state) + voteTime(state) * 0.5);
     at += between(rng, 1.8, 3.4);
     if (b.role === 'goose') {
       if (accused === b.id) {
@@ -492,6 +494,11 @@ export function sayLine(state: WorldState, speaker: Participant, kind: ChatKind,
   return events;
 }
 
+/** People need longer than bots to talk things over and to make up their minds. */
+const people = (state: WorldState): number => state.participants.filter((p) => !p.isBot).length;
+export const talkTime = (state: WorldState): number => (people(state) > 1 ? MEETING_TALK_PEOPLE : MEETING_TALK);
+export const voteTime = (state: WorldState): number => (people(state) > 1 ? MEETING_VOTE_PEOPLE : MEETING_VOTE);
+
 /** Records a vote; only in the voting stage, once, by the living, for the living or nobody. */
 export function castVote(state: WorldState, voter: Participant, target: number): SimEvent[] {
   const m = state.meeting;
@@ -538,7 +545,7 @@ export function stepMeeting(state: WorldState, dt: number, send: (who: number, v
 
   if (m.stage === 'talk' && m.timeLeft === 0) {
     m.stage = 'vote';
-    m.timeLeft = MEETING_VOTE;
+    m.timeLeft = voteTime(state);
     events.push({ type: 'meetingStage' });
   } else if (m.stage === 'vote') {
     const everyone = state.participants.every((p) => !p.alive || m.votes[p.id] !== null);

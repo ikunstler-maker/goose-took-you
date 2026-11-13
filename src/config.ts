@@ -216,6 +216,9 @@ export const BOT_REPORT_SIGHT = 8;
 /** Meetings (stage 4). Discussion, then voting, then the result card, seconds. */
 export const MEETING_TALK = 30;
 export const MEETING_VOTE = 20;
+/** With two or more people in the match talking takes longer: discussion and voting, seconds. */
+export const MEETING_TALK_PEOPLE = 50;
+export const MEETING_VOTE_PEOPLE = 30;
 export const MEETING_RESULT = 5;
 /** Red «ТЕРМІНОВИЙ СОЗВОН» button: presses per participant per match. */
 export const BUTTON_USES = 1;

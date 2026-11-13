@@ -172,3 +172,15 @@ Entry format (≤8 lines):
 - Fix: `npm run build && npm run build:server`, `PORT=8787 node server/dist/index.js`, `vite preview`, open two Playwright pages with `?server=ws://localhost:8787` (second with `&room=CODE`). `__goose.send/advance` do nothing online by design.
 - Seen: 2026-11-13
 
+### Playwright `click()` times out on meeting buttons in the sandbox
+- Symptom: `page.click` on a `.say-chip` or vote card waits forever though the element is visible and on top.
+- Root cause: SwiftShader frames take seconds; the meeting window is rebuilt on every new chat line, so the element is never "stable" long enough.
+- Fix: press through the page (`page.evaluate(() => el.click())`); it runs the same handlers. Stage game situations with a throw-away server script built from `server/room.ts`, sending commands via `room.receive`, never `applyCommand` directly (events would bypass the players).
+- Seen: 2026-11-13
+
+### No Vercel preview on pull requests
+- Symptom: PRs from `claude/*` branches show no Vercel check or preview link.
+- Root cause: by design since 2026-11-13: `vercel.json` disables deployments for `claude/*` to stay under the free 100 deployments/day limit. Only `main` deploys.
+- Fix: none needed; to preview a branch, remove the pattern in `vercel.json` or deploy it manually in Vercel.
+- Seen: 2026-11-13
+

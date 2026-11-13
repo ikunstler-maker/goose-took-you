@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PACK_COOLDOWN, TICK } from '../config';
+import { MEETING_TALK, MEETING_TALK_PEOPLE, MEETING_VOTE_PEOPLE, PACK_COOLDOWN, TICK } from '../config';
 import { fitsIn } from './nav';
 import { eventsFor, viewFor } from './view';
 import { applyCommand, createWorld, isAway, step, type SimEvent, type WorldState } from './world';
@@ -166,5 +166,34 @@ describe('player views', () => {
     expect(sabotage).toContainEqual(expect.objectContaining({ type: 'sabotageStarted', who: 0 }));
     expect(eventsFor(state, away.id, sabotage)).toContainEqual(expect.objectContaining({ type: 'sabotageStarted', who: -1 }));
     expect(eventsFor(state, 0, sabotage)).toContainEqual(expect.objectContaining({ type: 'sabotageStarted', who: 0 }));
+  });
+});
+
+describe('meetings with several people', () => {
+  it('give more time to talk and to vote than a match with one person', () => {
+    const table = (state: WorldState): void => {
+      state.buttonCooldown = 0;
+      const prop = state.level.props.find((p) => p.kind === 'meetingTable')!;
+      state.participants[0]!.x = prop.x + Math.max(prop.w, prop.d) / 2 + 0.5;
+      state.participants[0]!.z = prop.z;
+      step(state, TICK);
+      applyCommand(state, 0, { type: 'interact' });
+    };
+    const solo = createWorld(7);
+    applyCommand(solo, 0, { type: 'start' });
+    table(solo);
+    expect(solo.meeting!.timeLeft).toBe(MEETING_TALK);
+
+    const many = online(7);
+    applyCommand(many, 0, { type: 'start' });
+    table(many);
+    expect(many.meeting!.timeLeft).toBe(MEETING_TALK_PEOPLE);
+    run(many, MEETING_TALK_PEOPLE + 0.1);
+    expect(many.meeting!.stage).toBe('vote');
+    expect(many.meeting!.timeLeft).toBeGreaterThan(MEETING_VOTE_PEOPLE - 0.2);
+    // Bots still get their votes in before the time is up.
+    run(many, MEETING_VOTE_PEOPLE * 0.8);
+    const bots = many.participants.filter((p) => p.brain && p.alive);
+    expect(bots.every((p) => many.meeting!.votes[p.id] !== null)).toBe(true);
   });
 });
