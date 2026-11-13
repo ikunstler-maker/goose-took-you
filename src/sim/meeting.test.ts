@@ -1,3 +1,4 @@
+import { alertTick, SEEN } from './attention';
 import { describe, expect, it } from 'vitest';
 import {
   BUTTON_COOLDOWN,
@@ -132,6 +133,9 @@ describe('meetings', () => {
     witness.x = victim.x;
     witness.z = victim.z + 1.5;
     step(state, TICK);
+    // Looking right at it: bots can miss what happens off to the side.
+    witness.facing = Math.atan2(me(state).x - witness.x, me(state).z - witness.z);
+    state.tick = alertTick(witness, me(state).x, me(state).z, SEEN.pack, state.tick);
     applyCommand(state, LOCAL_PLAYER, { type: 'pack' });
     expect(witness.brain!.suspicion).toMatchObject({ who: LOCAL_PLAYER, level: 2 });
 

@@ -1,10 +1,11 @@
-import { HONK_HEAR_RANGE, PLAYER_SAY_COOLDOWN, SNEEZE_HEAR_RANGE } from '../config';
+import { GOOSE_SKILL_SHOW_NEXT, HONK_HEAR_RANGE, MODEM_HEAR_RANGE, PLAYER_SAY_COOLDOWN, SNEEZE_HEAR_RANGE } from '../config';
 import type { Box } from './cargo';
 import { cameraSpots, cameraSees } from './cameras';
 import type { Carpet } from './carpets';
 import { seesHonk, type ChatLine, type MeetingStage } from './meeting';
 import type { Sabotage, SabotageKind } from './sabotage';
 import type { Profession, Siren, Tag } from './professions';
+import { shownLook, unseen, type Feather, type GooseSkill, type Rustle } from './roulette';
 import type { Task } from './tasks';
 import {
   isAway,
@@ -48,6 +49,9 @@ export interface PlayerView {
   meeting: MeetingView | null;
   /** The packed Streamer's siren: everyone gets the arrow. */
   siren: Siren | null;
+  /** Feathers in sight, and plants in sight that shake. */
+  feathers: Feather[];
+  rustles: Rustle[];
 }
 
 /** A seat as others know it. */
@@ -82,6 +86,9 @@ export interface BodyView {
   honk: number;
   /** Busy with a task or the cameras: stands still. */
   busy: boolean;
+  /** Seconds left of a glitch cloud, and of the shimmer of coming back from invisibility. */
+  glitch: number;
+  shimmer: number;
 }
 
 /** What only the seat's owner knows about itself. */
@@ -109,6 +116,14 @@ export interface SelfView {
   ductLeft: number;
   /** Team Lead with the tablet open: the tick each seat left the match, -1 while in it; null otherwise. */
   outAt: number[] | null;
+  /** Goose: the next roulette skill when it may be shown, else null; its tricks as they run. */
+  gooseNext: GooseSkill | null;
+  disguise: number | null;
+  morphTo: number | null;
+  disguiseLeft: number;
+  glitch: number;
+  vanish: number;
+  shimmer: number;
 }
 
 export interface MeetingView {
@@ -143,7 +158,7 @@ function onCamera(state: WorldState, viewer: Participant, x: number, z: number):
 /** Can the viewer see this participant right now? Everyone is in plain view outside of play. */
 export function seesBody(state: WorldState, viewer: Participant, p: Participant): boolean {
   if (p === viewer) return true;
-  if (!p.alive || p.under !== null) return false;
+  if (!p.alive || unseen(p)) return false;
   if (state.phase !== 'play') return true;
   return cellSeen(state, viewer.id, p.x, p.z) || onCamera(state, viewer, p.x, p.z);
 }
@@ -160,6 +175,8 @@ function bodyOf(state: WorldState, viewer: Participant, p: Participant): BodyVie
     tell: p.tell,
     honk: seesHonk(state, viewer, p) ? p.honk : 0,
     busy: p.activeTask !== null || p.watching,
+    glitch: p.glitch,
+    shimmer: p.shimmer,
   };
 }
 
@@ -171,8 +188,8 @@ export function viewFor(state: WorldState, you: number): PlayerView {
   const sight = state.sight[you]!;
   const seats = state.participants.map((p): SeatView => ({
     id: p.id,
-    color: p.color,
-    accessory: p.accessory,
+    // A Deepfake wears its copy's look for everyone but itself.
+    ...shownLook(state, p, you),
     alive: p.alive,
     ejected: p.ejected,
     human: !p.isBot,
@@ -219,6 +236,13 @@ export function viewFor(state: WorldState, you: number): PlayerView {
       charged: viewer.charged,
       ductLeft: viewer.ductLeft,
       outAt: viewer.tablet > 0 ? state.participants.map((p) => p.outAt) : null,
+      gooseNext: viewer.role === 'goose' && GOOSE_SKILL_SHOW_NEXT ? viewer.gooseNext : null,
+      disguise: viewer.disguise,
+      morphTo: viewer.morphTo,
+      disguiseLeft: viewer.disguiseLeft,
+      glitch: viewer.glitch,
+      vanish: viewer.vanish,
+      shimmer: viewer.shimmer,
     },
     sight: sight.cells.slice(),
     sightVersion: sight.version,
@@ -226,6 +250,11 @@ export function viewFor(state: WorldState, you: number): PlayerView {
     // The hump of a rug out of sight would tell where the Goose hides.
     carpets: state.carpets.map((c) => ({ ...c, links: [...c.links], occupied: c.occupied && (viewer.under === c.id || cellSeen(state, you, c.x, c.z)) })),
     siren: state.siren ? { ...state.siren } : null,
+    feathers: state.feathers.filter((f) => cellSeen(state, you, f.x, f.z)).map((f) => ({ ...f })),
+    rustles: state.rustles.filter((r) => {
+      const prop = state.level.props[r.prop]!;
+      return cellSeen(state, you, prop.x, prop.z);
+    }).map((r) => ({ ...r })),
     meeting: m && {
       caller: m.caller,
       victim: m.victim,
@@ -266,6 +295,11 @@ export function eventsFor(state: WorldState, you: number, events: readonly SimEv
   for (const event of events) {
     // A line from someone out of the match is heard only by the others who are out.
     if (event.type === 'chat' && viewer.alive && !state.participants[event.who]!.alive) continue;
+    // A shaking plant is seen only by whoever has it in sight.
+    if (event.type === 'rustled') {
+      if (cellSeen(state, you, event.x, event.z)) out.push(event);
+      continue;
+    }
     if (PUBLIC.has(event.type) || !('who' in event)) {
       out.push(event);
       continue;
@@ -274,6 +308,17 @@ export function eventsFor(state: WorldState, you: number, events: readonly SimEv
       // Heard by distance alone, walls or not; only the Goose knows it was itself.
       if (event.who === you) out.push(event);
       else if (Math.hypot(event.x - viewer.x, event.z - viewer.z) <= HONK_HEAR_RANGE) out.push({ ...event, who: -1 });
+      continue;
+    }
+    if (event.type === 'modem') {
+      // Heard nearby, through walls; nobody can tell whose.
+      if (event.who === you) out.push(event);
+      else if (Math.hypot(event.x - viewer.x, event.z - viewer.z) <= MODEM_HEAR_RANGE) out.push({ ...event, who: -1 });
+      continue;
+    }
+    if ((event.type === 'morphed' || event.type === 'vanished') && event.who !== you) {
+      // Seen where it happens; who it really was is for the eyes to judge, not the wire.
+      if (cellSeen(state, you, event.x, event.z) || onCamera(state, viewer, event.x, event.z)) out.push({ ...event, who: -1 });
       continue;
     }
     if (event.type === 'sneezed') {

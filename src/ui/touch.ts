@@ -1,6 +1,7 @@
 import { STICK_DEADZONE, STICK_FLICK, STICK_RADIUS } from '../config';
 import { t } from '../i18n';
 import { tagTarget } from '../sim/professions';
+import { skillActive } from '../sim/roulette';
 import { me, type WorldState } from '../sim/world';
 
 /** What a touch button asks for; `main.ts` turns it into the same sim command a key would send. */
@@ -183,11 +184,19 @@ export function createTouchControls(
     const wait = Math.ceil(world.sabotageCooldown);
     const packWait = Math.ceil(self.packCooldown);
     // The profession's button: the Analyst's pixel and the Team Lead's tablet are pressed; a SysAdmin sees its dust timer.
-    const job = playing && self.role === 'chick' ? self.profession : null;
-    const skillShown = job === 'analyst' || job === 'lead' || (job === 'sysadmin' && hidden);
-    const skillWait = job === 'analyst' ? Math.ceil(self.skillCooldown) : job === 'sysadmin' ? Math.max(0, Math.ceil(self.ductLeft)) : 0;
+    const job = !playing ? null : self.role === 'goose' ? 'goose' : self.profession;
+    const trick = skillActive(self);
+    const skillShown = job === 'analyst' || job === 'lead' || (job === 'sysadmin' && hidden) || (job === 'goose' && !hidden);
+    const skillWait =
+      job === 'analyst' || (job === 'goose' && !trick) ? Math.ceil(self.skillCooldown) : job === 'sysadmin' ? Math.max(0, Math.ceil(self.ductLeft)) : 0;
     const skillReady =
-      job === 'analyst' ? skillWait === 0 && tagTarget(world, self) !== null : job === 'lead' ? self.charged && self.tablet === 0 : false;
+      job === 'analyst'
+        ? skillWait === 0 && tagTarget(world, self) !== null
+        : job === 'lead'
+          ? self.charged && self.tablet === 0
+          : job === 'goose'
+            ? (skillWait === 0 && !trick) || (self.disguise !== null && self.glitch === 0)
+            : false;
     const state = [
       job,
       skillShown,

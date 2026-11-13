@@ -1,6 +1,7 @@
 import { CAMERA_RADIUS, CAMERA_ROOMS } from '../config';
 import type { Box } from './cargo';
 import type { Level } from './level';
+import { unseen } from './roulette';
 import { canSee } from './vision';
 
 /** A fixed security camera above the centre of a room's hub core. */
@@ -26,11 +27,11 @@ export const cameraSees = (level: Level, spot: CameraSpot, x: number, z: number)
 export function cameraView(
   level: Level,
   spot: CameraSpot,
-  participants: readonly { id: number; alive: boolean; under: number | null; x: number; z: number }[],
+  participants: readonly { id: number; alive: boolean; under: number | null; vanish: number; x: number; z: number }[],
   boxes: readonly Box[],
 ): { participants: number[]; boxes: number[] } {
   return {
-    participants: participants.filter((p) => p.alive && p.under === null && cameraSees(level, spot, p.x, p.z)).map((p) => p.id),
+    participants: participants.filter((p) => p.alive && !unseen(p) && cameraSees(level, spot, p.x, p.z)).map((p) => p.id),
     boxes: boxes.filter((b) => b.carrier === null && cameraSees(level, spot, b.x, b.z)).map((b) => b.id),
   };
 }

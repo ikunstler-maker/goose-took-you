@@ -1,4 +1,4 @@
-import { PLAYER_SAY_COOLDOWN, PLAYER_SPEED } from '../config';
+import { PLAYER_SAY_COOLDOWN, PLAYER_SPEED, VANISH_SPEED } from '../config';
 import { createWorld, setLocalSeat, walk, type WorldState } from '../sim/world';
 import { unpackSight, type WireView } from './protocol';
 
@@ -53,6 +53,8 @@ export function applyView(world: WorldState, view: WireView, changed: Partial<Wi
   world.buttonCooldown = view.buttonCooldown;
   world.sabotage = view.sabotage;
   world.siren = view.siren;
+  world.feathers = view.feathers;
+  world.rustles = view.rustles;
 
   if (changed.seats || changed.self) {
     for (const seat of view.seats) {
@@ -72,6 +74,8 @@ export function applyView(world: WorldState, view: WireView, changed: Partial<Wi
         p.carrying = null;
         p.tell = 0;
         p.honk = 0;
+        p.glitch = 0;
+        p.shimmer = 0;
         targets.delete(seat.id);
         continue;
       }
@@ -91,6 +95,8 @@ export function applyView(world: WorldState, view: WireView, changed: Partial<Wi
       p.carrying = body.carrying;
       p.tell = body.tell;
       p.honk = body.honk;
+      p.glitch = body.glitch;
+      p.shimmer = body.shimmer;
     }
     const self = world.participants[you]!;
     const mine = view.self;
@@ -112,6 +118,13 @@ export function applyView(world: WorldState, view: WireView, changed: Partial<Wi
     self.tablet = mine.tablet;
     self.charged = mine.charged;
     self.ductLeft = mine.ductLeft;
+    if (mine.gooseNext) self.gooseNext = mine.gooseNext;
+    self.disguise = mine.disguise;
+    self.morphTo = mine.morphTo;
+    self.disguiseLeft = mine.disguiseLeft;
+    self.glitch = mine.glitch;
+    self.vanish = mine.vanish;
+    self.shimmer = mine.shimmer;
     if (mine.outAt) mine.outAt.forEach((at, id) => (world.participants[id]!.outAt = at));
     world.sabotageCooldown = mine.sabotageCooldown;
   }
@@ -176,7 +189,7 @@ export function glide(world: WorldState, targets: Targets, dt: number, you = -1,
       if (pushing) {
         p.facing = Math.atan2(own.x, own.z);
         p.moving = true;
-        walk(world.level, world.buckets, p, own.x, own.z, dt);
+        walk(world.level, world.buckets, p, own.x, own.z, dt, p.vanish > 0 ? VANISH_SPEED : 1);
       }
       const off = Math.hypot(target.x - p.x, target.z - p.z);
       if (own.still < SETTLE_AFTER && off < PLAYER_SPEED * LAG_ALLOWANCE + 0.3) continue;

@@ -1,4 +1,4 @@
-import { CHICK_COLORS, DUCT_COOLDOWN, DUCT_TIME, TABLET_FRESH, TABLET_RECENT, TABLET_TIME, TAG_COOLDOWN, TICK } from '../config';
+import { CHICK_COLORS, DUCT_COOLDOWN, GOOSE_SKILL_COOLDOWN, GOOSE_SKILL_SHOW_NEXT, DUCT_TIME, TABLET_FRESH, TABLET_RECENT, TABLET_TIME, TAG_COOLDOWN, TICK } from '../config';
 import { t, type I18nKey } from '../i18n';
 import { tabletStatus, tagTarget } from '../sim/professions';
 import { me, type WorldState } from '../sim/world';
@@ -48,7 +48,7 @@ export function createSkillUi(handlers: { onSkill(): void }): SkillUi {
   const draw = (world: WorldState, force: boolean): void => {
     last = world;
     const self = me(world);
-    const job = world.phase === 'play' && self.alive ? self.profession : null;
+    const job = world.phase !== 'play' || !self.alive ? null : self.role === 'goose' ? 'goose' : self.profession;
     let label = '';
     let fill = 0;
     let ready = false;
@@ -77,6 +77,21 @@ export function createSkillUi(handlers: { onSkill(): void }): SkillUi {
         label = self.skillCooldown > 0 ? t('skill.wait', { seconds: Math.ceil(self.skillCooldown) }) : t('skill.useE');
         fill = 1 - self.skillCooldown / DUCT_COOLDOWN;
       }
+    } else if (job === 'goose') {
+      if (self.glitch > 0) label = t('skill.glitch');
+      else if (self.disguise !== null) {
+        label = t('skill.morphing', { color: t(`look.color.${world.participants[self.disguise]!.color}` as I18nKey), seconds: Math.ceil(self.disguiseLeft) });
+        // Pressed again, the mask comes off.
+        ready = true;
+      } else if (self.vanish > 0) label = t('skill.vanishing', { seconds: Math.ceil(self.vanish) });
+      else if (self.shimmer > 0) label = t('skill.shimmer');
+      else if (self.skillCooldown > 0) label = t('skill.wait', { seconds: Math.ceil(self.skillCooldown) });
+      else {
+        // Blind roulette by default: which skill fires is a surprise even to the Goose.
+        label = GOOSE_SKILL_SHOW_NEXT ? t(`skill.next.${self.gooseNext}`) : t('skill.ready');
+        ready = true;
+      }
+      fill = 1 - self.skillCooldown / GOOSE_SKILL_COOLDOWN;
     } else if (job === 'streamer') {
       label = t('skill.passive');
       fill = 1;
@@ -86,7 +101,7 @@ export function createSkillUi(handlers: { onSkill(): void }): SkillUi {
       shown = key;
       button.hidden = job === null;
       if (job) {
-        const pressable = job === 'analyst' || job === 'lead';
+        const pressable = job === 'analyst' || job === 'lead' || job === 'goose';
         button.disabled = !ready;
         button.classList.toggle('passive', !pressable);
         name.textContent = pressable && !isTouch() ? `F · ${t(`skill.${job}`)}` : t(`skill.${job}`);

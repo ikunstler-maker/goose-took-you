@@ -32,8 +32,10 @@ import { fitsIn } from './nav';
 import { remember, type Note, type SeenKind } from './notes';
 import type { RoomType } from './prefabs';
 import { createRng, type Rng } from './rng';
+import { notices, SEEN } from './attention';
 import { canSee } from './vision';
 import { endSabotage, sightRadius } from './sabotage';
+import { endTricks, shownId, unseen } from './roulette';
 import type { Participant, SimEvent, WorldState } from './world';
 
 /** A vote for nobody. */
@@ -66,6 +68,11 @@ export type ChatKind =
   | 'sysadmin'
   | 'sysadminLie'
   | 'tablet'
+  /** Goose roulette: saw someone turn into another chick, or vanish; found a feather; saw a plant shake by itself. */
+  | 'sawMorph'
+  | 'sawVanish'
+  | 'feather'
+  | 'rustle'
   /** Quick reports only a human makes: met someone somewhere, a plain suspicion, a plain word for someone. */
   | 'sawIn'
   | 'suspect'
@@ -95,6 +102,10 @@ export const CHAT_NEEDS: Record<ChatKind, { about: boolean; room: boolean }> = {
   sysadmin: { about: false, room: false },
   sysadminLie: { about: true, room: false },
   tablet: { about: true, room: false },
+  sawMorph: { about: true, room: true },
+  sawVanish: { about: true, room: true },
+  feather: { about: false, room: true },
+  rustle: { about: false, room: true },
   sawIn: { about: true, room: true },
   suspect: { about: true, room: false },
   trust: { about: true, room: false },
@@ -105,10 +116,10 @@ export const CHAT_NEEDS: Record<ChatKind, { about: boolean; room: boolean }> = {
 const SAYABLE: ReadonlySet<ChatKind> = new Set<ChatKind>([
   'saw', 'sawCarpet', 'sus', 'where', 'with', 'agree', 'defend', 'nothing',
   'idle', 'sawTask', 'sawFix', 'iFixed', 'vouch', 'sawIn', 'suspect', 'trust',
-  'pixel', 'sysadmin', 'sysadminLie', 'tablet',
+  'pixel', 'sysadmin', 'sysadminLie', 'tablet', 'sawMorph', 'sawVanish', 'feather', 'rustle',
 ]);
 /** Claims that pull bot votes towards the named participant, hard and soft; and away from it. */
-const HARD_CLAIMS: ReadonlySet<ChatKind> = new Set<ChatKind>(['saw', 'sawCarpet', 'pixel', 'sysadminLie']);
+const HARD_CLAIMS: ReadonlySet<ChatKind> = new Set<ChatKind>(['saw', 'sawCarpet', 'pixel', 'sysadminLie', 'sawMorph', 'sawVanish']);
 const SOFT_CLAIMS: ReadonlySet<ChatKind> = new Set<ChatKind>(['sus', 'suspect', 'idle']);
 const VOUCHES: ReadonlySet<ChatKind> = new Set<ChatKind>(['trust', 'vouch', 'sawTask', 'sawFix', 'with']);
 
@@ -121,6 +132,8 @@ const SEEN_LINE: Record<SeenKind, ChatKind> = {
   task: 'sawTask',
   met: 'sawIn',
   pixel: 'pixel',
+  morph: 'sawMorph',
+  vanish: 'sawVanish',
 };
 
 export interface ChatLine {
@@ -179,7 +192,7 @@ export interface Suspicion {
   level: number;
   room: RoomType | null;
   /** What was seen: a pack, someone diving under / climbing out of a rug, someone by a fresh box, a long neck or a honk, the Analyst's pixel at a pack. */
-  deed: 'pack' | 'carpet' | 'box' | 'tell' | 'pixel';
+  deed: 'pack' | 'carpet' | 'box' | 'tell' | 'pixel' | 'morph' | 'vanish';
   /** `tell` only: how many neck stretches were noticed. */
   times?: number;
 }
@@ -192,13 +205,17 @@ export function noteDeed(state: WorldState, goose: Participant, victim: Particip
   for (const p of state.participants) {
     if (p === goose || p === victim || !p.alive || p.role !== 'chick') continue;
     if (!canSee(state.level, p.x, p.z, goose.x, goose.z, sightRadius(state))) continue;
+    // Whoever it looks like takes the blame: a Deepfake frames its copy.
+    const who = shownId(goose);
     if (!p.brain) {
-      remember(p, deed, goose.id, roomType(state, goose.roomId));
+      remember(p, deed, who, roomType(state, goose.roomId));
       continue;
     }
+    // Eyes elsewhere: the human factor.
+    if (!notices(p, goose.x, goose.z, state.tick, deed === 'pack' ? SEEN.pack : SEEN.carpet)) continue;
     // A pack outweighs a rug sighting; never downgrade.
     if (p.brain.suspicion?.level === 2 && p.brain.suspicion.deed !== 'carpet' && deed === 'carpet') continue;
-    p.brain.suspicion = { who: goose.id, level: 2, room: roomType(state, goose.roomId), deed };
+    p.brain.suspicion = { who, level: 2, room: roomType(state, goose.roomId), deed };
   }
 }
 
@@ -207,17 +224,18 @@ export function noteDeed(state: WorldState, goose: Participant, victim: Particip
  * notice. One sighting is a hunch, a second one near certainty.
  */
 export function noteTell(state: WorldState, goose: Participant): void {
-  if (goose.under !== null || !goose.alive) return;
+  if (unseen(goose) || !goose.alive) return;
   for (const p of state.participants) {
     if (!p.brain || p === goose || !p.alive || p.role !== 'chick') continue;
     if (!canSee(state.level, p.x, p.z, goose.x, goose.z, Math.min(TELL_VISIBLE_RANGE, sightRadius(state)))) continue;
     const roll = (((state.tick + 1) * 2654435761 + p.id * 40503 + goose.id * 977) >>> 0) % 1000;
-    if (roll >= BOT_TELL_NOTICE * 1000) continue;
+    if (roll >= BOT_TELL_NOTICE * 1000 || !notices(p, goose.x, goose.z, state.tick, SEEN.tell)) continue;
     const s = p.brain.suspicion;
     // Seeing the deed itself outweighs any neck.
     if (s && s.level === 2) continue;
-    const times = s && s.deed === 'tell' && s.who === goose.id ? (s.times ?? 1) + 1 : 1;
-    p.brain.suspicion = { who: goose.id, level: 1, room: roomType(state, goose.roomId), deed: 'tell', times };
+    const who = shownId(goose);
+    const times = s && s.deed === 'tell' && s.who === who ? (s.times ?? 1) + 1 : 1;
+    p.brain.suspicion = { who, level: 1, room: roomType(state, goose.roomId), deed: 'tell', times };
   }
 }
 
@@ -226,7 +244,7 @@ export function noteTell(state: WorldState, goose: Participant): void {
  * close by, in plain sight, and only whoever the Goose is turned towards.
  */
 export function seesHonk(state: WorldState, viewer: Participant, goose: Participant): boolean {
-  if (goose.honk <= 0 || !goose.alive || goose.under !== null) return false;
+  if (goose.honk <= 0 || !goose.alive || unseen(goose)) return false;
   if (viewer === goose) return true;
   const dx = viewer.x - goose.x;
   const dz = viewer.z - goose.z;
@@ -246,8 +264,9 @@ export function noteHonk(state: WorldState, goose: Participant): void {
     if (roll >= BOT_HONK_NOTICE * 1000) continue;
     const s = p.brain.suspicion;
     if (s && s.level === 2) continue;
-    const times = s && s.deed === 'tell' && s.who === goose.id ? (s.times ?? 1) + 1 : 1;
-    p.brain.suspicion = { who: goose.id, level: 1, room: roomType(state, goose.roomId), deed: 'tell', times };
+    const who = shownId(goose);
+    const times = s && s.deed === 'tell' && s.who === who ? (s.times ?? 1) + 1 : 1;
+    p.brain.suspicion = { who, level: 1, room: roomType(state, goose.roomId), deed: 'tell', times };
   }
 }
 
@@ -255,9 +274,9 @@ export function noteHonk(state: WorldState, goose: Participant): void {
 export function noteBox(state: WorldState, bot: Participant, boxX: number, boxZ: number): void {
   if (!bot.brain || (bot.brain.suspicion && bot.brain.suspicion.level >= 1)) return;
   for (const o of state.participants) {
-    if (o === bot || !o.alive || o.under !== null || Math.hypot(o.x - boxX, o.z - boxZ) > BOX_SUSPECT_RANGE) continue;
+    if (o === bot || !o.alive || unseen(o) || Math.hypot(o.x - boxX, o.z - boxZ) > BOX_SUSPECT_RANGE) continue;
     if (!canSee(state.level, bot.x, bot.z, o.x, o.z, sightRadius(state))) continue;
-    bot.brain.suspicion = { who: o.id, level: 1, room: roomType(state, o.roomId), deed: 'box' };
+    bot.brain.suspicion = { who: shownId(o), level: 1, room: roomType(state, o.roomId), deed: 'box' };
     return;
   }
 }
@@ -315,6 +334,7 @@ export function startMeeting(state: WorldState, caller: Participant, victim: num
     p.moving = false;
     p.thought = null;
     p.under = null;
+    endTricks(p);
     p.ductLeft = 0;
     p.tag = null;
     p.tablet = 0;
@@ -329,6 +349,8 @@ export function startMeeting(state: WorldState, caller: Participant, victim: num
     }
   }
   state.siren = null;
+  state.feathers = [];
+  state.rustles = [];
   // Vacation boxes are taken away; whatever someone carried stays in their wings.
   state.boxes = state.boxes.filter((b) => b.kind !== 'vacation');
   seat(state);
@@ -365,6 +387,7 @@ export function startMeeting(state: WorldState, caller: Participant, victim: num
       p.brain.notes = [];
       p.brain.tabletSaw = null;
       p.brain.heard = null;
+      p.brain.clue = null;
     }
     p.seen = [];
   }
@@ -377,10 +400,10 @@ function buddyOf(state: WorldState, p: Participant): number | null {
   let best: number | null = null;
   let bestD = 6;
   for (const o of state.participants) {
-    if (o === p || !o.alive || o.under !== null) continue;
+    if (o === p || !o.alive || unseen(o)) continue;
     const d = Math.hypot(o.x - p.x, o.z - p.z);
     if (d < bestD && canSee(state.level, p.x, p.z, o.x, o.z, sightRadius(state))) {
-      best = o.id;
+      best = shownId(o);
       bestD = d;
     }
   }
@@ -484,7 +507,8 @@ function planBots(
       const chance = s.who === accused && claimed && !realAdmin ? BOT_CARPET_CLAIMED : BOT_CARPET_VOTE;
       vote(b.id, rng.next() < chance ? s.who : SKIP_VOTE);
     } else if (s && s.level === 2 && state.participants[s.who]!.alive) {
-      say(t, b.id, s.deed === 'pixel' ? 'pixel' : 'saw', s.who, s.room);
+      const line: ChatKind = s.deed === 'pixel' ? 'pixel' : s.deed === 'morph' ? 'sawMorph' : s.deed === 'vanish' ? 'sawVanish' : 'saw';
+      say(t, b.id, line, s.who, s.room);
       vote(b.id, s.who, true);
     } else if (s && s.deed === 'tell' && state.participants[s.who]!.alive) {
       say(t, b.id, 'neck', s.who, s.room);
@@ -503,6 +527,10 @@ function planBots(
     } else if (b.brain!.tabletSaw !== null) {
       // The Team Lead's tablet: who went on holiday just before the meeting.
       say(t, b.id, 'tablet', b.brain!.tabletSaw);
+      vote(b.id, rng.next() < BOT_RANDOM_VOTE ? randomOther(b) : SKIP_VOTE);
+    } else if (b.brain!.clue !== null) {
+      // A feather or a plant shaking by itself: somebody here is not who they seem.
+      say(t, b.id, b.brain!.clue.kind, null, b.brain!.clue.room);
       vote(b.id, rng.next() < BOT_RANDOM_VOTE ? randomOther(b) : SKIP_VOTE);
     } else if (noteLine(b, state) && (noteLine(b, state)!.who !== b.id || rng.next() < 0.5)) {
       const note = noteLine(b, state)!;
@@ -537,7 +565,7 @@ function noteLine(bot: Participant, state: WorldState): Note | null {
 /** Ready-made lines for a human: the gravest sightings first, then its own whereabouts. */
 function hintsFor(state: WorldState, p: Participant, room: RoomType | null): ChatLine[] {
   if (p.brain || !p.alive) return [];
-  const order: SeenKind[] = ['pack', 'pixel', 'carpet', 'idle', 'fixed', 'task', 'met'];
+  const order: SeenKind[] = ['pack', 'morph', 'vanish', 'pixel', 'carpet', 'idle', 'fixed', 'task', 'met'];
   const lines: ChatLine[] = [];
   for (const kind of order) {
     for (const n of p.seen) {

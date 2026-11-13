@@ -471,3 +471,40 @@ export const TASK_MIN_TIME: Record<string, number> = {
   badge: 0.4,
 };
 
+
+/** Goose roulette: one skill button; each press fires a random one of two skills. Cooldown starts when the effect is over. Seconds. */
+export const GOOSE_SKILL_COOLDOWN = 30;
+/** Show the Goose which skill the next press fires (off: a blind roll, the owner's choice). */
+export const GOOSE_SKILL_SHOW_NEXT = false;
+/** Deepfake: a glitch cloud this long, then the look of a random living chick for MORPH_TIME; the same cloud on the way back. Seconds. */
+export const MORPH_GLITCH = 1.2;
+export const MORPH_TIME = 18;
+/** A white feather with a yellow paint drop lies where a Deepfake starts and ends, seconds. */
+export const FEATHER_TIME = 10;
+/** Incognito: invisible this long, this much faster; then a shimmer before it is fully back. Seconds, factor. */
+export const VANISH_TIME = 10;
+export const VANISH_SPEED = 1.15;
+export const VANISH_SHIMMER = 1;
+/** The modem squeal of reappearing is heard this far, through walls too, metres. */
+export const MODEM_HEAR_RANGE = 8;
+/** An invisible Goose brushing this close past a potted plant makes it shake for RUSTLE_TIME. Metres, seconds. */
+export const RUSTLE_RANGE = 0.45;
+export const RUSTLE_TIME = 1.4;
+/** Bot Goose: presses the roulette right after a pack, and otherwise, unseen, about once in this many seconds. */
+export const GOOSE_BOT_SKILL_EVERY = 45;
+/** Bot Goose: wears a borrowed look at least this long before taking it off where nobody sees, seconds. The roulette pressed again in a Deepfake takes the mask off. */
+export const GOOSE_MASK_MIN = 6;
+
+/**
+ * Bot attention, the human factor: the chance a bot notices something it has in plain sight,
+ * by the angle off where it faces. Within ATTN_FOCUS degrees almost surely; towards ATTN_SIDE it
+ * fades to the side chance; behind it, rarely. Busy at a task, every chance is multiplied by ATTN_BUSY.
+ */
+export const ATTN_FOCUS = 30;
+export const ATTN_SIDE = 100;
+export const ATTN_FOCUS_CHANCE = 0.95;
+export const ATTN_SIDE_CHANCE = 0.45;
+export const ATTN_BEHIND_CHANCE = 0.1;
+export const ATTN_BUSY = 0.6;
+/** Something that stays in view (a box, a feather) gets a fresh look this often, seconds. */
+export const ATTN_GLANCE = 0.5;

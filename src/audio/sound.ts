@@ -35,7 +35,11 @@ export type SoundName =
   /** The packed Streamer's «MEGA ALARM 777!»: a slot-machine siren. */
   | 'siren'
   /** A SysAdmin pops out of a rug: «Апчхи!» */
-  | 'sneeze';
+  | 'sneeze'
+  /** The Goose roulette: a glitch crackle, a dial-up modem squeal, rustling leaves. */
+  | 'glitch'
+  | 'modem'
+  | 'rustle';
 
 export interface Sound {
   /** Call from a user gesture: browsers keep audio silent until then. */
@@ -196,6 +200,22 @@ export function createSound(volume = SOUND_DEFAULT_VOLUME, muted = false): Sound
         tone('sawtooth', 1100, 500, i * 0.5 + 0.25, 0.25, 0.1 * g);
       }
       notes('triangle', [1319, 1568, 2093], 0.12, 0.2, 0.08 * g, 2.05);
+    },
+    glitch: (g) => {
+      // Digital crackle: short square blips jumping in pitch over a hiss.
+      [880, 1760, 660, 1320, 990, 2200].forEach((f, i) => tone('square', f, f * 0.8, i * 0.06, 0.05, 0.06 * g));
+      hiss('highpass', 4000, 0, 0.4, 0.12 * g);
+    },
+    modem: (g) => {
+      // Dial-up handshake: a two-tone chirp, then a noisy screech.
+      tone('sine', 1650, 1650, 0, 0.18, 0.08 * g);
+      tone('sine', 1850, 1850, 0.2, 0.18, 0.08 * g);
+      tone('sawtooth', 2100, 900, 0.42, 0.35, 0.06 * g);
+      hiss('bandpass', 2400, 0.42, 0.45, 0.18 * g);
+    },
+    rustle: (g) => {
+      hiss('bandpass', 3200, 0, 0.35, 0.16 * g);
+      hiss('bandpass', 2400, 0.12, 0.3, 0.12 * g);
     },
     sneeze: (g) => {
       // «Ап…» a sharp breath in, «…чхи!» a noisy burst.

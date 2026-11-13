@@ -86,6 +86,12 @@
 | Тімлід Моушну, Табель | професія: планшет зі статусами всіх («на роботі», «у відпустці», «звільнено») | `'lead'`, `Participant.tablet`, `charged`, `tabletStatus`, `TABLET_*` |
 | Сисадмін Серверної, кабель-канал | професія: курча, якому можна під килимки; «апчхи!» після 8 с | `'sysadmin'`, `Participant.ductLeft`, подія `sneezed`, `DUCT_*` |
 | Стрімер Казіка, сирена «MEGA ALARM 777!» | професія: запакований вмикає сирену й стрілку до коробки | `'streamer'`, `Siren`, `WorldState.siren`, подія `siren`, `SIREN_*` |
+| Гусь-Рулетка | навичка Гуся: натискання навмання запускає Діпфейк або Інкогніто | `GooseSkill`, `gooseSkill`, `Participant.gooseNext`, `src/sim/roulette.ts`, `GOOSE_SKILL_*` |
+| Діпфейк, глітч-хмара, маска | Гусь бере вигляд живого курчати; хмара на початку й наприкінці | `'morph'`, `Participant.disguise`, `glitch`, `shownId`, `shownLook`, подія `morphed`, `MORPH_*` |
+| Інкогніто, мерехтіння, модем | Гусь невидимий і швидший; повертається з мерехтінням і звуком модема | `'vanish'`, `Participant.vanish`, `shimmer`, `unseen`, події `vanished`, `modem`, `VANISH_*` |
+| Перо | улика Діпфейку: біле перо з жовтою фарбою на підлозі | `Feather`, `WorldState.feathers`, `FEATHER_TIME` |
+| Кущ трусився | улика Інкогніто: рослина в горщику хитається | `Rustle`, `WorldState.rustles`, подія `rustled`, `RUSTLE_*` |
+| Увага ботів | шанс, що бот помітить подію в полі зору, за кутом від погляду | `attentionChance`, `notices`, `src/sim/attention.ts`, `ATTN_*` |
 | Мережа килимків | 2–3 килимки, між якими можна переповзати | `Carpet.net`, `Carpet.links` |
 | Під килимком | Гусь схований: його ніхто не бачить, огляд 4 м | `Participant.under`, команди `interact` / `crawl` |
 | Лабораторія Гемблінгу | кімната зі слот-автоматами; сатира, без грошей | `RoomType: 'gambling'`, `slotMachine`, `bigWinSign` |

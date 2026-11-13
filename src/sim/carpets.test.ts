@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CARPET_COOLDOWN, CARPET_HIDE_LIMIT, CARPET_HIDE_MAX, TICK } from '../config';
+import { alertTick, SEEN } from './attention';
 import { placeCarpets } from './carpets';
 import { meetingTable } from './meeting';
 import { findPath, fitsIn, nearestFree } from './nav';
@@ -118,6 +119,9 @@ describe('carpets', () => {
     witness.brain = createWitnessBrain(state, 3);
     witness.x = me(state).x + 1.5;
     witness.z = me(state).z;
+    // Looking right at it: bots can miss what happens off to the side.
+    witness.facing = -Math.PI / 2;
+    state.tick = alertTick(witness, me(state).x, me(state).z, SEEN.carpet, state.tick);
     applyCommand(state, LOCAL_PLAYER, { type: 'interact' });
     expect(witness.brain!.suspicion).toMatchObject({ who: LOCAL_PLAYER, level: 2, deed: 'carpet' });
   });

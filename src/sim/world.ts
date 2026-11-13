@@ -38,6 +38,7 @@ import {
   DUCT_COOLDOWN,
   DUCT_TIME,
   SKILL_FIRST_COOLDOWN,
+  VANISH_SPEED,
 } from '../config';
 import { createBrain, thinkBot, type Brain } from './bots';
 import { boxInReach, carryBox, rollSlip, vacationInReach, type Box } from './cargo';
@@ -58,6 +59,7 @@ import {
 import { castVote, meetingTable, noteDeed, noteHonk, noteTell, sayLine, startMeeting, stepMeeting, type ChatKind, type Meeting } from './meeting';
 import { carpetInReach, placeCarpets, type Carpet } from './carpets';
 import { afterPack, dealProfessions, stepSiren, stepSkills, useSkill, type Profession, type Siren, type Tag } from './professions';
+import { skillBusy, stepClues, stepRoulette, type Feather, type GooseSkill, type Rustle } from './roulette';
 import { noteMet, noteSeen, type Seen } from './notes';
 import type { RoomType } from './prefabs';
 import { computeVisibility } from './vision';
@@ -177,6 +179,17 @@ export interface Participant {
   ductLeft: number;
   /** Tick it was packed or voted out; -1 while in the match. */
   outAt: number;
+  /** Goose roulette: the skill the next press fires (rolled ahead, shown only if GOOSE_SKILL_SHOW_NEXT). */
+  gooseNext: GooseSkill;
+  /** Deepfake: seconds left of the glitch cloud, and the look it changes to (null: back to its own). */
+  glitch: number;
+  morphTo: number | null;
+  /** Deepfake: whose look it wears now, and for how long; null in its own look. */
+  disguise: number | null;
+  disguiseLeft: number;
+  /** Incognito: seconds left invisible, then of the shimmer before it is fully back. */
+  vanish: number;
+  shimmer: number;
 }
 
 /** Match phase. The lobby is where the player picks a look before the start. */
@@ -220,6 +233,9 @@ export interface WorldState {
   forcedProfession: Profession | null;
   /** The Streamer's siren after it was packed, or null. */
   siren: Siren | null;
+  /** Feathers left by a Deepfake, and plants an invisible Goose shook. */
+  feathers: Feather[];
+  rustles: Rustle[];
   tick: number;
 }
 
@@ -299,7 +315,15 @@ export type SimEvent =
   /** A SysAdmin sneezed its way out of a rug at (x, z): heard nearby. */
   | { type: 'sneezed'; who: number; x: number; z: number }
   /** The packed Streamer's siren, with its box at (x, z): everyone hears it. */
-  | { type: 'siren'; x: number; z: number; victim: number };
+  | { type: 'siren'; x: number; z: number; victim: number }
+  /** The Goose's glitch cloud at (x, z): a Deepfake starts or ends. Others are told only where. */
+  | { type: 'morphed'; who: number; x: number; z: number }
+  /** The Goose goes invisible at (x, z). */
+  | { type: 'vanished'; who: number; x: number; z: number }
+  /** The modem squeal of an Incognito coming back at (x, z): heard nearby. */
+  | { type: 'modem'; who: number; x: number; z: number }
+  /** A potted plant shakes: something invisible brushed past it. */
+  | { type: 'rustled'; prop: number; x: number; z: number };
 
 /** The participant this browser controls. */
 /** What one participant sees: 1 for every floor cell in sight; `version` is bumped on every recompute. */
@@ -466,6 +490,13 @@ export function createWorld(
     charged: false,
     ductLeft: 0,
     outAt: -1,
+    gooseNext: 'morph',
+    glitch: 0,
+    morphTo: null,
+    disguise: null,
+    disguiseLeft: 0,
+    vanish: 0,
+    shimmer: 0,
   }));
   // Everyone gets a full task list; ids are global so boxes and events stay unambiguous.
   const tasks: Task[] = [];
@@ -495,6 +526,8 @@ export function createWorld(
     forcedRole,
     forcedProfession,
     siren: null,
+    feathers: [],
+    rustles: [],
     tick: 0,
   };
   me(state).color = clampIndex(look.color, CHICK_COLORS.length);
@@ -542,17 +575,17 @@ export function applyCommand(state: WorldState, who: number, command: Command): 
     case 'leave':
       return leave(state, actor);
     case 'interact':
-      return state.phase === 'play' && actor.alive ? interact(state, actor) : [];
+      return state.phase === 'play' && actor.alive && !skillBusy(actor) ? interact(state, actor) : [];
     case 'pack':
-      return state.phase === 'play' ? pack(state, actor) : [];
+      return state.phase === 'play' && !skillBusy(actor) ? pack(state, actor) : [];
     case 'report':
-      return state.phase === 'play' ? report(state, actor) : [];
+      return state.phase === 'play' && !skillBusy(actor) ? report(state, actor) : [];
     case 'crawl':
       return state.phase === 'play' ? crawl(state, actor, command.to) : [];
     case 'skill':
       return useSkill(state, actor);
     case 'sabotage': {
-      if (state.phase !== 'play') return [];
+      if (state.phase !== 'play' || skillBusy(actor)) return [];
       const events = startSabotage(state, actor, command.kind);
       if (events.length > 0) refreshVision(state);
       return events;
@@ -820,7 +853,7 @@ function interact(state: WorldState, actor: Participant): SimEvent[] {
 }
 
 function computePrompt(state: WorldState, actor: Participant): Prompt | null {
-  if (actor.under !== null) return null;
+  if (actor.under !== null || skillBusy(actor)) return null;
   // A sabotage comes before everything else, box in the wings or not.
   const fix = fixInReach(state, actor);
   if (fix !== null) return { kind: 'fix', point: fix };
@@ -900,11 +933,11 @@ function packTarget(state: WorldState, goose: Participant): number | null {
  * Axes are resolved separately so the chick slides along walls. The browser
  * uses the same step to move its own chick ahead of the server's answer.
  */
-export function walk(level: Level, buckets: Buckets, p: { x: number; z: number }, dirX: number, dirZ: number, dt: number): boolean {
-  const nextX = p.x + dirX * PLAYER_SPEED * dt;
+export function walk(level: Level, buckets: Buckets, p: { x: number; z: number }, dirX: number, dirZ: number, dt: number, speed = 1): boolean {
+  const nextX = p.x + dirX * PLAYER_SPEED * speed * dt;
   const hitX = dirX !== 0 && blocked(level, buckets, nextX, p.z, PLAYER_RADIUS);
   if (!hitX) p.x = nextX;
-  const nextZ = p.z + dirZ * PLAYER_SPEED * dt;
+  const nextZ = p.z + dirZ * PLAYER_SPEED * speed * dt;
   const hitZ = dirZ !== 0 && blocked(level, buckets, p.x, nextZ, PLAYER_RADIUS);
   if (!hitZ) p.z = nextZ;
   return hitX || hitZ;
@@ -924,7 +957,7 @@ function stepParticipant(state: WorldState, p: Participant, dt: number, events: 
     p.idleTime = 0;
     const fromX = p.x;
     const fromZ = p.z;
-    const hit = walk(level, buckets, p, p.moveX, p.moveZ, dt);
+    const hit = walk(level, buckets, p, p.moveX, p.moveZ, dt, p.vanish > 0 ? VANISH_SPEED : 1);
 
     if (hit) {
       // Running into something at speed leaves the chick dizzy.
@@ -972,7 +1005,7 @@ function stepParticipant(state: WorldState, p: Participant, dt: number, events: 
   }
 
   const playing = state.phase === 'play' && p.alive;
-  const exposed = playing && p.under === null;
+  const exposed = playing && p.under === null && !skillBusy(p);
   const prompt = playing ? computePrompt(state, p) : null;
   const canReport = exposed ? (vacationInReach(state.boxes, p.x, p.z, REPORT_RANGE)?.id ?? null) : null;
   const canPack = exposed && p.role === 'goose' ? packTarget(state, p) : null;
@@ -983,7 +1016,10 @@ function stepParticipant(state: WorldState, p: Participant, dt: number, events: 
     events.push({ type: 'promptChanged', who: p.id });
   }
 
-  if (state.phase === 'play') stepSkills(state, p, dt);
+  if (state.phase === 'play') {
+    stepSkills(state, p, dt);
+    stepRoulette(state, p, dt, events);
+  }
   if (p.role === 'chick' && p.under !== null && state.phase === 'play') {
     p.ductLeft -= dt;
     // The dust gets up its nose: out it pops, sneezing.
@@ -1062,6 +1098,7 @@ export function step(state: WorldState, dt: number): SimEvent[] {
   }
   if (state.phase === 'play') {
     stepSiren(state, dt);
+    stepClues(state, dt);
     if (state.tick % PLAYER_MET_EVERY === 0) noteMet(state);
     for (const task of state.tasks) {
       if (task.rush <= 0) continue;

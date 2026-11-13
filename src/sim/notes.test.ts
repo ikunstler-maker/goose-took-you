@@ -28,6 +28,8 @@ describe('bot notes', () => {
   it('remember someone idling long enough, once', () => {
     const state = started(42);
     freezeBots(state);
+    // Everyone looks at the player: bots can miss what happens off to the side.
+    for (const p of state.participants) if (p.brain) p.facing = Math.atan2(me(state).x - p.x, me(state).z - p.z);
     for (let t = 0; t < BOT_IDLE_NOTE + 1; t += TICK) step(state, TICK);
     const watcher = state.participants.find((p) => p.brain && p.role === 'chick')!;
     const notes = watcher.brain!.notes;
