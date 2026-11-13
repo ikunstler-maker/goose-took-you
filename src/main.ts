@@ -488,6 +488,8 @@ function startOffice(seed: number): void {
 }
 
 // --- Input: screen-relative movement for the isometric camera ---
+/** Windows that scroll or take the pointer for themselves. */
+const WHEEL_PANELS = '#lobby, #meeting, #minigame, #over';
 const held = new Set<string>();
 const KEYS: Record<string, [number, number]> = {
   KeyW: [0, 1],
@@ -590,7 +592,15 @@ window.addEventListener('blur', () => {
   held.clear();
   sendMove();
 });
-window.addEventListener('wheel', (event) => stage.zoomBy(event.deltaY > 0 ? 1.1 : 1 / 1.1), { passive: true });
+window.addEventListener(
+  'wheel',
+  (event) => {
+    // Over a window with its own content the wheel scrolls that window, not the camera.
+    if (event.target instanceof Element && event.target.closest(WHEEL_PANELS)) return;
+    stage.zoomBy(event.deltaY > 0 ? 1.1 : 1 / 1.1);
+  },
+  { passive: true },
+);
 
 startOffice(seedFromUrl() ?? randomSeed());
 lobby.setOnline(onlineInfo);
