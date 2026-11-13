@@ -994,7 +994,10 @@ export function step(state: WorldState, dt: number): SimEvent[] {
   for (const p of state.participants) if (p.brain) events.push(...thinkBot(state, state.nav, p, dt, send));
   for (const p of state.participants) stepParticipant(state, p, dt, events);
   state.broadcast = Math.max(0, state.broadcast - dt);
-  for (const c of state.carpets) c.lift = Math.max(0, c.lift - dt);
+  for (const c of state.carpets) {
+    c.lift = Math.max(0, c.lift - dt);
+    c.occupied = state.participants.some((p) => p.under === c.id);
+  }
   if (state.phase === 'play') {
     if (state.tick % PLAYER_MET_EVERY === 0) noteMet(state);
     for (const task of state.tasks) {

@@ -5,7 +5,7 @@ import { canvasTexture, mat, withFog } from './kit';
 
 export interface CarpetsView {
   root: THREE.Group;
-  update(world: WorldState, time: number): void;
+  update(world: WorldState, time: number, dt?: number): void;
   dispose(): void;
 }
 
@@ -19,6 +19,8 @@ const PALETTES: readonly [string, string, string][] = [
 
 const RUG = new THREE.BoxGeometry(CARPET_LONG, 0.025, CARPET_SHORT);
 const HUMP = new THREE.SphereGeometry(0.3, 12, 8);
+/** How fast the hump swells and sinks, per second. */
+const HUMP_SWELL = 9;
 const ARROW = (() => {
   const shape = new THREE.Shape();
   shape.moveTo(0, 0.32);
@@ -111,12 +113,12 @@ export function createCarpets(world: WorldState): CarpetsView {
       return arrow;
     });
     root.add(pivot);
-    return { hinge, hump, arrows };
+    return { hinge, hump, arrows, swell: 0, ripple: 0 };
   });
 
   return {
     root,
-    update(w, time) {
+    update(w, time, dt = 1 / 60) {
       const n = w.level.size;
       const self = w.participants[LOCAL_PLAYER]!;
       w.carpets.forEach((c, i) => {
@@ -124,13 +126,22 @@ export function createCarpets(world: WorldState): CarpetsView {
         if (!view) return;
         const seen = w.sight[LOCAL_PLAYER]!.cells[Math.floor(c.z) * n + Math.floor(c.x)] === 1;
         const lift = seen && c.lift > 0 ? Math.sin((c.lift / CARPET_DIVE) * Math.PI) : 0;
-        view.hinge.rotation.x = -lift * 0.9;
-        const hidden = w.participants.some((p) => p.under === c.id);
-        view.hump.visible = hidden && seen;
+        view.hinge.rotation.x = -lift * 1.15;
+        // Online the server says which rugs in sight have a hump; locally the match itself knows.
+        const hidden = c.occupied || w.participants.some((p) => p.under === c.id);
+        // The hump swells up after a dive and sinks away after a climb-out instead of popping.
+        const target = hidden && seen ? 1 : 0;
+        view.swell += (target - view.swell) * Math.min(1, dt * HUMP_SWELL);
+        view.hump.visible = view.swell > 0.02;
         if (view.hump.visible) {
-          view.hump.position.y = 0.02 + Math.abs(Math.sin(time * 5.3 + i)) * 0.03;
+          const wobble = Math.abs(Math.sin(time * 5.3 + i));
+          view.hump.scale.set(1.2 * view.swell, 0.3 * view.swell * (1 + wobble * 0.25), 0.9 * view.swell);
+          view.hump.position.y = 0.02 + wobble * 0.03 * view.swell;
           view.hump.rotation.y = Math.sin(time * 3.1 + i) * 0.4;
         }
+        // The whole rug shivers for a moment when someone dives in, climbs out or crawls over.
+        if (c.lift > 0 || view.ripple > 0) view.ripple = Math.max(c.lift > 0 ? 1 : 0, view.ripple - dt * 2.5);
+        view.hinge.position.y = seen ? Math.sin(time * 38 + i) * 0.012 * view.ripple : 0;
         const mine = self.under === c.id;
         for (const arrow of view.arrows) {
           arrow.visible = mine;
