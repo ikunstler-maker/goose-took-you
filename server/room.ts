@@ -1,4 +1,4 @@
-import { ACCESSORIES, CHICK_COLORS, TICK } from '../src/config';
+import { ACCESSORIES, CHAT_TEXT_MAX, CHICK_COLORS, TICK } from '../src/config';
 import { toWire, type ClientMessage, type Look, type PlayerCommand, type Refusal, type ServerMessage, type WireView } from '../src/net/protocol';
 import { eventsFor, viewFor } from '../src/sim/view';
 import { applyCommand, createWorld, step, type SimEvent, type WorldState } from '../src/sim/world';
@@ -51,7 +51,8 @@ export function sanitize(raw: unknown): PlayerCommand | null {
       const about = c.about === null ? null : int(c.about) ? c.about : undefined;
       const room = c.room === null ? null : typeof c.room === 'string' && c.room.length < 24 ? c.room : undefined;
       if (typeof c.kind !== 'string' || c.kind.length > 16 || about === undefined || room === undefined) return null;
-      // The sim checks the phrase, the participant and the room against the match.
+      // The sim checks the phrase, the participant and the room against the match, and cleans free text.
+      if (c.kind === 'text') return typeof c.text === 'string' && c.text.length <= 4 * CHAT_TEXT_MAX ? ({ type: 'say', kind: 'text', about: null, room: null, text: c.text } as PlayerCommand) : null;
       return { type: 'say', kind: c.kind, about, room } as PlayerCommand;
     }
     default:

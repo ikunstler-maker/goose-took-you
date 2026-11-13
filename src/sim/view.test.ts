@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { MEETING_TALK, MEETING_TALK_PEOPLE, MEETING_VOTE_PEOPLE, PACK_COOLDOWN, TICK } from '../config';
+import { CHAT_TEXT_MAX, MEETING_TALK, MEETING_TALK_PEOPLE, MEETING_VOTE_PEOPLE, PACK_COOLDOWN, PLAYER_SAY_COOLDOWN, TICK } from '../config';
+import { cleanText } from './meeting';
 import { fitsIn } from './nav';
 import { eventsFor, viewFor } from './view';
 import { applyCommand, createWorld, isAway, step, type SimEvent, type WorldState } from './world';
@@ -195,5 +196,62 @@ describe('meetings with several people', () => {
     run(many, MEETING_VOTE_PEOPLE * 0.8);
     const bots = many.participants.filter((p) => p.brain && p.alive);
     expect(bots.every((p) => many.meeting!.votes[p.id] !== null)).toBe(true);
+  });
+});
+
+describe('free text at a meeting', () => {
+  function meeting(): WorldState {
+    const state = online(7);
+    applyCommand(state, 0, { type: 'start' });
+    state.buttonCooldown = 0;
+    const prop = state.level.props.find((p) => p.kind === 'meetingTable')!;
+    state.participants[0]!.x = prop.x + Math.max(prop.w, prop.d) / 2 + 0.5;
+    state.participants[0]!.z = prop.z;
+    step(state, TICK);
+    applyCommand(state, 0, { type: 'interact' });
+    return state;
+  }
+  const say = (state: WorldState, who: number, text: unknown): SimEvent[] =>
+    applyCommand(state, who, { type: 'say', kind: 'text', about: null, room: null, text: text as string });
+
+  it('is cleaned, cut to the limit and never empty', () => {
+    expect(cleanText('  привіт,\n\tофіс\u202e!  ')).toBe('привіт, офіс !');
+    expect(cleanText('   \n ')).toBeNull();
+    expect(cleanText(42)).toBeNull();
+    expect([...cleanText('я'.repeat(500))!]).toHaveLength(CHAT_TEXT_MAX);
+
+    const state = meeting();
+    run(state, PLAYER_SAY_COOLDOWN);
+    expect(say(state, 1, '   ')).toEqual([]);
+    expect(say(state, 1, 'це {about} <b>я</b>')).toEqual([{ type: 'chat', who: 1 }]);
+    expect(state.meeting!.chat.at(-1)).toEqual({ who: 1, kind: 'text', about: null, room: null, text: 'це {about} <b>я</b>' });
+    // The same pause as between ready-made lines.
+    expect(say(state, 1, 'ще')).toEqual([]);
+    // Bots take no notice: nobody answers and no vote moves.
+    const plan = JSON.stringify(state.meeting!.plan);
+    run(state, PLAYER_SAY_COOLDOWN);
+    expect(say(state, 1, 'пакувало курча 3!')).toHaveLength(1);
+    expect(JSON.stringify(state.meeting!.plan.filter((p) => p.vote !== null))).toBe(JSON.stringify(JSON.parse(plan).filter((p: { vote: number | null }) => p.vote !== null)));
+  });
+
+  it('from those out of the match reaches only the others who are out', () => {
+    const state = meeting();
+    const [alive, out, alsoOut] = [state.participants[0]!, state.participants[1]!, state.participants[2]!];
+    out.alive = false;
+    alsoOut.alive = false;
+    run(state, PLAYER_SAY_COOLDOWN);
+    const events = say(state, out.id, 'я знаю, хто Гусь');
+    expect(events).toEqual([{ type: 'chat', who: out.id }]);
+    expect(state.meeting!.chat.at(-1)).toMatchObject({ ghost: true });
+    expect(viewFor(state, alive.id).meeting!.chat.some((l) => l.kind === 'text')).toBe(false);
+    expect(viewFor(state, alsoOut.id).meeting!.chat.some((l) => l.kind === 'text')).toBe(true);
+    expect(eventsFor(state, alive.id, events)).toEqual([]);
+    expect(eventsFor(state, alsoOut.id, events)).toEqual(events);
+    // Ready-made lines stay for the living only.
+    run(state, PLAYER_SAY_COOLDOWN);
+    expect(applyCommand(state, out.id, { type: 'say', kind: 'nothing', about: null, room: null })).toEqual([]);
+    // The living are read by everyone.
+    expect(say(state, alive.id, 'хто де був?')).toHaveLength(1);
+    expect(viewFor(state, alsoOut.id).meeting!.chat.filter((l) => l.kind === 'text')).toHaveLength(2);
   });
 });

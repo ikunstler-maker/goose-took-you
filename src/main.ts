@@ -140,7 +140,7 @@ const lobby = createLobby({
 
 const meeting = createMeetingView({
   onVote: (target) => send({ type: 'vote', target }),
-  onSay: (kind, about, room) => send({ type: 'say', kind, about, room }),
+  onSay: (kind, about, room, text) => send(text === undefined ? { type: 'say', kind, about, room } : { type: 'say', kind, about, room, text }),
 });
 
 const minigames = createMinigameHost({
@@ -406,6 +406,7 @@ function goOnline(first: ClientMessage): void {
       Object.assign(onlineInfo, { code: info.code, players: info.players, host: info.host === info.you });
       setRoomInUrl(info.code);
       freshRoom = true;
+      meeting.setOnline(true);
       lobby.setOnline(onlineInfo);
     },
     onRoster: (info) => {
@@ -421,6 +422,7 @@ function goOnline(first: ClientMessage): void {
 function leaveRoom(error: I18nKey | null): void {
   online?.close();
   online = null;
+  meeting.setOnline(false);
   targets.clear();
   setLocalSeat(0);
   setRoomInUrl(null);

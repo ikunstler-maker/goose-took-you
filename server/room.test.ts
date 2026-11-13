@@ -31,6 +31,9 @@ describe('sanitize', () => {
     expect(sanitize({ type: 'vote', target: 1.5 })).toBeNull();
     expect(sanitize({ type: 'sabotage', kind: 'nuke' })).toBeNull();
     expect(sanitize({ type: 'say', kind: 'suspect', about: 3, room: null })).toEqual({ type: 'say', kind: 'suspect', about: 3, room: null });
+    expect(sanitize({ type: 'say', kind: 'text', about: 3, room: 'lobby', text: 'привіт', x: 1 })).toEqual({ type: 'say', kind: 'text', about: null, room: null, text: 'привіт' });
+    expect(sanitize({ type: 'say', kind: 'text', about: null, room: null, text: 'я'.repeat(2000) })).toBeNull();
+    expect(sanitize({ type: 'say', kind: 'text', about: null, room: null })).toBeNull();
     expect(sanitize('start')).toBeNull();
     expect(sanitize(null)).toBeNull();
   });

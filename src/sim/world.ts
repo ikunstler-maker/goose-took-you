@@ -217,7 +217,7 @@ export type Command =
   /** At a meeting: vote for a participant id, or SKIP_VOTE. */
   | { type: 'vote'; target: number }
   /** At a meeting: a quick report, built from a phrase, a participant and a room. */
-  | { type: 'say'; kind: ChatKind; about: number | null; room: RoomType | null }
+  | { type: 'say'; kind: ChatKind; about: number | null; room: RoomType | null; text?: string }
   /** Goose under a rug: crawl to a linked rug. */
   | { type: 'crawl'; to: number }
   /** Goose: start a sabotage. */
@@ -506,7 +506,7 @@ export function applyCommand(state: WorldState, who: number, command: Command): 
     case 'vote':
       return state.phase === 'meeting' ? castVote(state, actor, command.target) : [];
     case 'say':
-      return state.phase === 'meeting' ? sayLine(state, actor, command.kind, command.about, command.room) : [];
+      return state.phase === 'meeting' ? sayLine(state, actor, command.kind, command.about, command.room, command.text) : [];
     case 'think':
       if (state.phase !== 'play' || !actor.alive) return [];
       actor.thought = command.thought;

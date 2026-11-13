@@ -1,4 +1,4 @@
-import { CHICK_COLORS, PLAYER_SAY_COOLDOWN, PLAYER_SAY_MAX } from '../config';
+import { CHAT_TEXT_MAX, CHICK_COLORS, PLAYER_SAY_COOLDOWN, PLAYER_SAY_MAX } from '../config';
 import { t, type I18nKey } from '../i18n';
 import { CHAT_NEEDS, SKIP_VOTE, type ChatKind, type ChatLine } from '../sim/meeting';
 import type { RoomType } from '../sim/prefabs';
@@ -9,6 +9,8 @@ export interface MeetingView {
   update(world: WorldState): void;
   hide(): void;
   relabel(): void;
+  /** Free text is for rooms with other people only. */
+  setOnline(on: boolean): void;
 }
 
 /** Phrases offered in the quick-report bar, in order. */
@@ -19,13 +21,37 @@ const hex = (color: number): string => `#${color.toString(16).padStart(6, '0')}`
 /** Meeting window: chat on the left, vote cards on the right, the stage timer on top. */
 export function createMeetingView(handlers: {
   onVote(target: number): void;
-  onSay(kind: ChatKind, about: number | null, room: RoomType | null): void;
+  onSay(kind: ChatKind, about: number | null, room: RoomType | null, text?: string): void;
 }): MeetingView {
   const root = document.getElementById('meeting') as HTMLElement;
   let shown = '';
   let world: WorldState | null = null;
   /** The quick report being put together: a phrase, then who it is about, then where. */
   let draft: { kind: ChatKind; about: number | null } | null = null;
+  let online = false;
+  /** People whose free text this player chose not to read, until the match ends. */
+  const muted = new Set<number>();
+
+  // The text field lives outside the redrawn parts, so typing survives new chat lines.
+  const form = document.createElement('form');
+  form.className = 'meeting-text';
+  const input = document.createElement('input');
+  input.maxLength = CHAT_TEXT_MAX;
+  input.autocomplete = 'off';
+  input.enterKeyHint = 'send';
+  const sendButton = document.createElement('button');
+  sendButton.type = 'submit';
+  form.append(input, sendButton);
+  root.append(form);
+  // Typing must not walk the chick or trigger game keys.
+  for (const type of ['keydown', 'keyup'] as const) input.addEventListener(type, (event) => event.stopPropagation());
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const text = input.value.trim();
+    if (!text || !world?.meeting || sendButton.disabled) return;
+    handlers.onSay('text', null, null, text);
+    input.value = '';
+  });
 
   const say = (kind: ChatKind, about: number | null, room: RoomType | null): void => {
     draft = null;
@@ -33,6 +59,15 @@ export function createMeetingView(handlers: {
   };
 
   root.addEventListener('click', (event) => {
+    const mute = (event.target as HTMLElement).closest('button[data-mute]') as HTMLButtonElement | null;
+    if (mute && world) {
+      const who = Number(mute.dataset.mute);
+      if (muted.has(who)) muted.delete(who);
+      else muted.add(who);
+      shown = '';
+      update(world);
+      return;
+    }
     const pick = (event.target as HTMLElement).closest('button[data-say]') as HTMLButtonElement | null;
     if (pick && !pick.disabled && world?.meeting) {
       pick.blur();
@@ -65,6 +100,7 @@ export function createMeetingView(handlers: {
 
   const lineText = (w: WorldState, line: ChatLine): string =>
     t(`chat.${line.kind}` as I18nKey, {
+      text: line.text ?? '',
       about: line.about === null ? '' : name(w, line.about),
       room: roomName(line.room),
     });
@@ -81,7 +117,8 @@ export function createMeetingView(handlers: {
     const self = w.participants[LOCAL_PLAYER]!;
     const canVote = m.stage === 'vote' && self.alive && m.votes[LOCAL_PLAYER] === null;
     const showVotes = m.stage === 'result';
-    root.replaceChildren();
+    // Everything but the text field is rebuilt.
+    for (const child of [...root.children]) if (child !== form) child.remove();
 
     const head = el('header', 'meeting-head');
     head.append(
@@ -95,7 +132,20 @@ export function createMeetingView(handlers: {
       const item = el('li', '');
       const dot = el('i', 'dot');
       dot.style.background = hex(CHICK_COLORS[w.participants[line.who]!.color]!);
-      item.append(dot, el('b', '', name(w, line.who)), el('span', '', lineText(w, line)));
+      const hidden = line.kind === 'text' && muted.has(line.who);
+      const who = line.ghost ? `${name(w, line.who)} (${t('chat.ghost')})` : name(w, line.who);
+      const text = el('span', hidden ? 'muted' : '', hidden ? t('chat.hidden') : lineText(w, line));
+      item.append(dot, el('b', '', who), text);
+      if (line.ghost) item.classList.add('ghost');
+      // Anyone's typed text can be put out of sight; ready-made lines cannot.
+      if (line.kind === 'text' && line.who !== LOCAL_PLAYER) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'chat-mute';
+        button.dataset.mute = String(line.who);
+        button.textContent = t(hidden ? 'chat.unmute' : 'chat.mute');
+        text.append(' ', button);
+      }
       chat.append(item);
     }
 
@@ -147,9 +197,16 @@ export function createMeetingView(handlers: {
 
     const body = el('div', 'meeting-body');
     body.append(chat, cards);
-    root.append(head, body);
-    if (self.alive && m.stage !== 'result') root.append(sayBar(w));
+    root.insertBefore(head, form);
+    root.insertBefore(body, form);
+    if (self.alive && m.stage !== 'result') root.insertBefore(sayBar(w), form);
     root.append(foot);
+    // Free text: online only, for the living and (among themselves) for those out of the match.
+    const canType = online && m.stage !== 'result' && m.said[LOCAL_PLAYER]! < PLAYER_SAY_MAX;
+    form.hidden = !canType;
+    input.placeholder = t(self.alive ? 'say.text.placeholder' : 'say.text.ghost');
+    sendButton.textContent = t('say.text.send');
+    sendButton.disabled = cooling(w);
     chat.scrollTop = chat.scrollHeight;
     tick(w);
   };
@@ -226,8 +283,11 @@ export function createMeetingView(handlers: {
     root.hidden = true;
     shown = '';
     draft = null;
+    input.value = '';
   };
   const update = (w: WorldState): void => {
+    // A new match: everyone is readable again.
+    if (world && world.level !== w.level) muted.clear();
     world = w;
     const m = w.meeting;
     if (!m) {
@@ -235,7 +295,7 @@ export function createMeetingView(handlers: {
       return;
     }
     // Redraw only when something on screen changed.
-    const key = `${m.stage}|${m.chat.length}|${m.votes.join(',')}|${m.ejected}|${cooling(w)}`;
+    const key = `${m.stage}|${m.chat.length}|${m.votes.join(',')}|${m.ejected}|${cooling(w)}|${online}|${[...muted].join()}`;
     if (key !== shown) {
       shown = key;
       draw(w);
@@ -246,6 +306,10 @@ export function createMeetingView(handlers: {
   return {
     update,
     hide,
+    setOnline(on) {
+      online = on;
+      shown = '';
+    },
     relabel() {
       shown = '';
       if (world?.meeting) draw(world);
