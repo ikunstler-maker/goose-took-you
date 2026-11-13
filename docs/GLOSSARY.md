@@ -83,7 +83,7 @@
 | Мережа килимків | 2–3 килимки, між якими можна переповзати | `Carpet.net`, `Carpet.links` |
 | Під килимком | Гусь схований: його ніхто не бачить, огляд 4 м | `Participant.under`, команди `interact` / `crawl` |
 | Лабораторія Гемблінгу | кімната зі слот-автоматами; сатира, без грошей | `RoomType: 'gambling'`, `slotMachine`, `bigWinSign` |
-| Аналітика й Охорона | кімната з пультом камер і сканерами бейджів | `RoomType: 'security'`, `cameraDesk`, `badgeScanner` |
+| Аналітика й Охорона | кімната з пультом камер, стійкою карток і турнікетом | `RoomType: 'security'`, `cameraDesk`, `badgeRack`, `badgeScanner` |
 | «Крива в Graph Editor» | мініігра: дві ручки кривої на зразок | `TaskKind: 'curve'`, `src/minigames/curve/` |
 | «Охолоди GPU» | мініігра: утримати температуру вентилятором | `TaskKind: 'gpu'`, `src/minigames/gpu/` |
 | «Занос на 777» | мініігра: зупинити барабани на 7 | `TaskKind: 'slot'`, `src/minigames/slot/` |
@@ -91,3 +91,6 @@
 | Камери спостереження | екран 2×2 за пультом в Охороні | `src/sim/cameras.ts`, `src/ui/cameras.ts`, `Participant.watching`, `CAMERA_*`, команда `stopWatching` |
 | Спостереження бота | що бот-курча бачило між зборами: завдання, лагодження, бездіяльність | `Note`, `Brain.notes`, `src/sim/notes.ts`, `BOT_IDLE_NOTE`, `BOT_NOTES_MAX` |
 | Заступництво | бот захищає звинуваченого, якого бачив за роботою | `ChatKind: 'vouch'` |
+| Турнікет | зчитувач карток біля дверей Охорони; другий крок «Сканера бейджа» | `badgeScanner`, `GATE_PROP`, `Station.kind: 'gate'`, `takeBadge`, подія `badgeTaken` |
+| Стійка карток | де беруть ключ-картку; перший крок «Сканера бейджа» | `badgeRack` |
+| Обманка | символ на барабані, схожий на ціль раунду | `SlotTheme.decoy`, `SLOT_DECOYS` |

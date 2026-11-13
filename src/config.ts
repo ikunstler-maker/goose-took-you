@@ -315,12 +315,24 @@ export const GPU_SPIKE = 0.08;
 export const GPU_HOLD_TIME = 4;
 /** «Занос на 777»: reel symbols, starting speed (symbols per second), slowdown per miss, floor speed. */
 export const SLOT_SYMBOLS = 8;
-export const SLOT_START_SPEED = 9;
+/** Starting reel speed is rolled per round between these, symbols per second. */
+export const SLOT_START_SPEED_MIN = 8;
+export const SLOT_START_SPEED_MAX = 12;
+/** Look-alike decoys of the round's target on every reel. */
+export const SLOT_DECOYS = 2;
 export const SLOT_SLOWDOWN = 0.75;
 export const SLOT_MIN_SPEED = 2.5;
 /** «Сканер бейджа»: allowed swipe duration, seconds. */
-export const BADGE_MIN_TIME = 0.6;
-export const BADGE_MAX_TIME = 1.2;
+/** The wanted swipe time is rolled per round between these; the reader accepts it within ± BADGE_TIME_WINDOW (share). */
+export const BADGE_TIME_MIN = 0.5;
+export const BADGE_TIME_MAX = 1.6;
+export const BADGE_TIME_WINDOW = 0.25;
+/** Chance that the card starts wrong side up, and that it flips again after a failed swipe. */
+export const BADGE_FLIP_CHANCE = 0.5;
+export const BADGE_REFLIP_CHANCE = 0.3;
+/** Chance per swipe that a nail gets stuck mid-way; at most this many snags per round. */
+export const BADGE_NAIL_CHANCE = 0.35;
+export const BADGE_MAX_NAILS = 2;
 /** Share of the track that counts as a full swipe. */
 export const BADGE_TRACK_DONE = 0.95;
 /** «Занос на 777»: seconds a missed reel shows its symbol before spinning again. */

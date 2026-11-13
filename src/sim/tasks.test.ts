@@ -174,3 +174,44 @@ describe('visited rooms', () => {
     expect(self.visited).toEqual([state.level.rooms.find((r) => r.type === 'lobby')!.id, other.id]);
   });
 });
+
+describe('badge', () => {
+  it('has one reader by a door of the security room, with free floor next to it', () => {
+    for (let seed = 1; seed <= 60; seed++) {
+      const { level } = createLobby(seed);
+      const readers = level.props.filter((p) => p.hub && p.kind === 'badgeScanner');
+      expect(readers).toHaveLength(1);
+      const reader = readers[0]!;
+      expect(level.rooms[reader.room]!.type).toBe('security');
+      const free = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => {
+        const x = Math.floor(reader.x) + dx!;
+        const z = Math.floor(reader.z) + dz!;
+        return level.zone[z * level.size + x] === reader.room && !level.props.some((p) => p.solid && Math.abs(p.x - x - 0.5) < p.w / 2 && Math.abs(p.z - z - 0.5) < p.d / 2);
+      });
+      expect(free).toBe(true);
+    }
+  });
+
+  it('is a card from the rack, then a swipe at the reader', () => {
+    const state = worldWith('badge');
+    const id = taskOf(state, 'badge');
+    const task = state.tasks[id]!;
+    expect(state.level.props[state.stations[task.station]!.prop]!.kind).toBe('badgeRack');
+    standAt(state, id);
+    expect(applyCommand(state, LOCAL_PLAYER, { type: 'interact' })).toEqual([{ type: 'badgeTaken', who: LOCAL_PLAYER, taskId: id }]);
+    expect(me(state).activeTask).toBeNull();
+    expect(state.stations[task.station]!.kind).toBe('gate');
+    step(state, TICK);
+    expect(me(state).prompt).toBeNull();
+    // Stand on any free side of the reader.
+    const reader = state.level.props[state.stations[task.station]!.prop]!;
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      me(state).x = reader.x + dx! * 1;
+      me(state).z = reader.z + dz! * 1;
+      step(state, TICK);
+      if (me(state).prompt) break;
+    }
+    expect(me(state).prompt).toEqual({ kind: 'task', task: id });
+    expect(applyCommand(state, LOCAL_PLAYER, { type: 'interact' })[0]).toMatchObject({ type: 'taskOpened', kind: 'badge' });
+  });
+});

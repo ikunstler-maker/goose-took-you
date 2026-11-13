@@ -17,8 +17,24 @@ export const STATION_PROPS: Record<TaskKind, PropKind> = {
   curve: 'ultrawide',
   gpu: 'rack',
   slot: 'slotMachine',
-  badge: 'badgeScanner',
+  badge: 'badgeRack',
 };
+
+/** Badge reader beside the security room's door. */
+export const GATE_PROP: PropKind = 'badgeScanner';
+
+/**
+ * A badge task starts at the card rack; taking the card moves the task to the
+ * reader in the same room. Returns false when the card is already taken.
+ */
+export function takeBadge(stations: Station[], task: Task): boolean {
+  const here = stations[task.station]!;
+  if (task.kind !== 'badge' || here.kind === 'gate') return false;
+  const gate = stations.find((s) => s.kind === 'gate' && s.room === here.room) ?? stations.find((s) => s.kind === 'gate');
+  if (!gate) return false;
+  task.station = gate.id;
+  return true;
+}
 
 /** Tasks that open a mini-game window; the rest are done in the office itself. */
 export const WINDOW_TASKS: readonly TaskKind[] = ['modus', 'copycat', 'news', 'lines', 'curve', 'gpu', 'slot', 'badge'];
@@ -29,7 +45,8 @@ export const CARGO_DESTINATIONS: readonly RoomType[] = ['lounge', 'greenhouse'];
 /** A workplace where a task can be done; points at a hub prop. */
 export interface Station {
   id: number;
-  kind: TaskKind;
+  /** `gate` is the badge reader by the door: the second stop of a badge task, never dealt as a task itself. */
+  kind: TaskKind | 'gate';
   prop: number;
   room: number;
 }
@@ -54,6 +71,7 @@ export function findStations(level: Level): Station[] {
     if (!prop.hub) return;
     const kind = kinds.find((k) => STATION_PROPS[k] === prop.kind);
     if (kind) stations.push({ id: stations.length, kind, prop: index, room: prop.room });
+    else if (prop.kind === GATE_PROP) stations.push({ id: stations.length, kind: 'gate', prop: index, room: prop.room });
   });
   return stations;
 }
@@ -73,7 +91,7 @@ export function assignTasks(stations: Station[], seed: number, owner: number): T
   }
   return picked.map((station, id) => ({
     id,
-    kind: station.kind,
+    kind: station.kind as TaskKind,
     station: station.id,
     owner,
     done: false,

@@ -40,6 +40,7 @@ import {
   assignTasks,
   findStations,
   taskInReach,
+  takeBadge,
   WINDOW_TASKS,
   type Station,
   type Task,
@@ -210,6 +211,7 @@ export type Command =
   | { type: 'sabotage'; kind: SabotageKind };
 
 export type SimEvent =
+  | { type: 'badgeTaken'; who: number; taskId: number }
   | { type: 'camerasOpened'; who: number }
   | { type: 'camerasClosed'; who: number }
   | { type: 'roomChanged'; who: number; roomId: number | null }
@@ -644,6 +646,8 @@ function interact(state: WorldState, actor: Participant): SimEvent[] {
     return [{ type: 'boxPicked', who: actor.id, boxId: box.id }];
   }
   if (!WINDOW_TASKS.includes(task.kind)) return [];
+  // The key card is picked up first and swiped at the reader by the door.
+  if (takeBadge(state.stations, task)) return [{ type: 'badgeTaken', who: actor.id, taskId: task.id }];
   actor.activeTask = task.id;
   const seed = ((state.level.seed * 31 + task.id * 997 + state.tick) >>> 0) || 1;
   return [{ type: 'taskOpened', who: actor.id, taskId: task.id, kind: task.kind, seed }];

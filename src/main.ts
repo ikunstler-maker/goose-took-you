@@ -285,6 +285,12 @@ function handle(events: SimEvent[]): void {
         dropInput();
         screens.showOver(world);
         break;
+      case 'badgeTaken':
+        sound.play('click');
+        hud.shout('hud.badgeTaken');
+        hud.setTasks(world);
+        markers?.refresh(world);
+        break;
       case 'taskClosed':
       case 'taskDone':
       case 'boxPicked':

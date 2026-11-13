@@ -63,7 +63,9 @@ export function createHud(handlers: { onNewOffice(): void; onLangChange(lang: La
         li.textContent =
           task.kind === 'cargo' && task.started
             ? t('task.cargoHint', { task: t('task.cargo'), hint: cargoHint(task) })
-            : t('task.where', { task: t(`task.${task.kind}`), room: t(`room.${roomType}`) });
+            : task.kind === 'badge' && stations[task.station]!.kind === 'gate'
+              ? t('task.badgeGate')
+              : t('task.where', { task: t(`task.${task.kind}`), room: t(`room.${roomType}`) });
         li.classList.toggle('done', task.done);
         return li;
       });
@@ -95,6 +97,9 @@ export function createHud(handlers: { onNewOffice(): void; onLangChange(lang: La
     const self = me(w);
     const p = self.prompt;
     if (p?.kind === 'fix' && w.sabotage) return t(`hud.fix.${w.sabotage.kind}`, { key: keyName('interact') });
+    if (p?.kind === 'task' && w.tasks[p.task]!.kind === 'badge' && w.stations[w.tasks[p.task]!.station]!.kind !== 'gate') {
+      return t('hud.badgeTake', { key: keyName('interact') });
+    }
     if (p?.kind === 'task') return t('hud.interact', { key: keyName('interact'), task: t(`task.${w.tasks[p.task]!.kind}`) });
     if (p?.kind === 'pickup') return t('hud.pickup', { key: keyName('interact') });
     if (p?.kind === 'deliver') return t('hud.deliver', { key: keyName('interact') });

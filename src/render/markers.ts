@@ -46,7 +46,12 @@ export function createTaskMarkers(world: WorldState): TaskMarkers {
     refresh(next) {
       for (const task of next.tasks) {
         const arrow = arrows.get(task.id);
-        if (arrow) arrow.visible = !task.done && !task.started;
+        if (!arrow) continue;
+        arrow.visible = !task.done && !task.started;
+        // A badge task moves from the card rack to the reader.
+        const prop = next.level.props[next.stations[task.station]!.prop]!;
+        arrow.position.x = prop.x;
+        arrow.position.z = prop.z;
       }
       const open = next.phase === 'play' ? openFixPoints(next, me(next)) : [];
       for (const [point, arrow] of fixes) arrow.visible = open.includes(point);
