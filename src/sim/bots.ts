@@ -43,7 +43,6 @@ import {
   GOOSE_SABOTAGE_MAX,
   INTERACT_RANGE,
   BOT_COMPANY_RANGE,
-  GOOSE_LURK_CHANCE,
   BOT_WARY_RANGE,
   BOT_WARY_REST,
   BOT_WARY_TIME,
@@ -71,8 +70,6 @@ export type Goal =
   | { kind: 'flee'; to: number }
   /** Chick that saw a pack: press the red meeting button. */
   | { kind: 'button' }
-  /** Goose: stand at this fix point during its own sabotage, looking busy. */
-  | { kind: 'lurk'; point: number }
   /** Goose: get to this rug to escape under it. */
   | { kind: 'carpet'; carpet: number }
   /** Dash to the Giant Green Button after a news edit. */
@@ -135,8 +132,6 @@ export interface Brain {
   crawled: boolean;
   /** Goose only: seconds it still waits, once allowed, before starting a sabotage; -1 until rolled. */
   sabotageIn: number;
-  /** Goose only: fix point it pretends to work at while its sabotage runs, or null. */
-  lurk: number | null;
   /** Chick only: what it saw that points at someone; brought up at the next meeting. */
   suspicion: Suspicion | null;
   /** Chick only: seconds left of walking away from its suspect, and until it may bolt again. */
@@ -179,7 +174,6 @@ export function createBrain(rng: Rng): Brain {
     notes: [],
     // Rolled on first use, so the brains' start-up rolls stay as they were.
     sabotageIn: -1,
-    lurk: null,
     escape: null,
     hideLeft: 0,
     hidden: 0,
@@ -340,7 +334,6 @@ function chooseGoal(state: WorldState, bot: Participant, avoid: number | null): 
     const brain = bot.brain!;
     if (brain.escape !== null) return { kind: 'carpet', carpet: brain.escape };
     if (brain.prey !== null) return { kind: 'hunt', target: brain.prey };
-    if (state.sabotage && brain.lurk !== null) return { kind: 'lurk', point: brain.lurk };
     if ((brain.alibi > 0 || brain.calm > 0) && brain.poseTask !== null) return { kind: 'pose', task: brain.poseTask };
     return { kind: 'wander' };
   }
@@ -422,7 +415,6 @@ function destinations(state: WorldState, nav: NavGrid, bot: Participant, goal: G
       return box ? [nearestFree(nav, box.x, box.z, 4)] : [];
     }
     case 'fix':
-    case 'lurk':
       return standCells(state, nav, goal.point).slice(0, STAND_TRIES);
     case 'green': {
       const index = state.level.props.findIndex((p) => p.hub && p.kind === 'greenButton');
@@ -522,14 +514,9 @@ function gooseMind(
     brain.sabotageIn -= dt;
     if (brain.sabotageIn <= 0) {
       brain.sabotageIn = -1;
-      const kind = SABOTAGE_KINDS[rng.int(SABOTAGE_KINDS.length)]!;
-      events.push(...send(bot.id, { type: 'sabotage', kind }));
-      // Often it joins the rescue party: who would suspect the one "fixing" things?
-      const points = state.fixPoints[kind];
-      brain.lurk = state.sabotage && points.length > 0 && rng.next() < GOOSE_LURK_CHANCE ? points[rng.int(points.length)]! : null;
+      events.push(...send(bot.id, { type: 'sabotage', kind: SABOTAGE_KINDS[rng.int(SABOTAGE_KINDS.length)]! }));
     }
   }
-  if (!state.sabotage) brain.lurk = null;
 
   if (brain.prey !== null) {
     const prey = state.participants[brain.prey]!;
@@ -711,11 +698,6 @@ export function thinkBot(state: WorldState, nav: NavGrid, bot: Participant, dt: 
       // At the goal: wait for its prompt a moment, then let it go for a while.
       brain.atGoal += dt;
       halt();
-      if (goal.kind === 'lurk') {
-        // At the fan or the tablet: look busy, touch nothing.
-        if (brain.atGoal <= dt) events.push(...send(bot.id, { type: 'think', thought: 'busy' }));
-        return events;
-      }
       if (goal.kind === 'pose') {
         // At the desk: stare at the screen for a while, with a thought bubble.
         events.push(...send(bot.id, { type: 'think', thought: 'busy' }));

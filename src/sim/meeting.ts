@@ -1,9 +1,5 @@
 import {
   BOT_FOLLOW_CHANCE,
-  GOOSE_BOAST_CHANCE,
-  GOOSE_BOAST_SWAY,
-  GOOSE_FRAME_CHANCE,
-  GOOSE_FRAME_SWAY,
   BOT_HONK_NOTICE,
   BOT_HUNCH_CHANCE,
   BOT_IDLE_VOTE_CHANCE,
@@ -407,10 +403,6 @@ function planBots(
     }
   }
 
-  // What the bot Goose made up this meeting: who it framed, and whether it boasted.
-  let framed: number | null = null;
-  let boasted: number | null = null;
-
   // The caller opens.
   if (caller.brain) {
     if (victim !== null) say(1, caller.id, 'found', victim, roomsBefore[caller.id]);
@@ -438,21 +430,12 @@ function planBots(
       } else if (accused !== null) {
         say(t, b.id, 'agree', accused);
         vote(b.id, accused);
-      } else if (rng.next() < GOOSE_FRAME_CHANCE) {
-        // Frame a random chick with a made-up sighting; some of the undecided will buy it.
+      } else if (rng.next() < 0.4) {
+        // Point at a random chick to muddy the water.
         const chicks = living.filter((o) => o.role === 'chick');
         const target = chicks[rng.int(chicks.length)]!;
-        say(t, b.id, rng.next() < 0.5 ? 'idle' : 'sus', target.id, roomsBefore[target.id] ?? room);
+        say(t, b.id, 'sus', target.id, roomType(state, target.roomId) ?? room);
         vote(b.id, target.id);
-        framed = target.id;
-      } else if (rng.next() < GOOSE_BOAST_CHANCE / (1 - GOOSE_FRAME_CHANCE)) {
-        // Or pose as a model worker: «I was fixing it», «I saw so-and-so hard at work».
-        const chicks = living.filter((o) => o.role === 'chick');
-        const friend = chicks[rng.int(chicks.length)]!;
-        if (rng.next() < 0.5) say(t, b.id, 'iFixed', null, room);
-        else say(t, b.id, 'sawTask', friend.id, roomsBefore[friend.id] ?? room);
-        vote(b.id, SKIP_VOTE);
-        boasted = b.id;
       } else {
         // An alibi in a room it may never have been to.
         const rooms = state.level.rooms;
@@ -491,15 +474,6 @@ function planBots(
       else say(t, b.id, 'nothing');
       vote(b.id, rng.next() < BOT_RANDOM_VOTE ? randomOther(b) : SKIP_VOTE);
     }
-  }
-  // The Goose's words work on the bots that saw nothing themselves.
-  for (const entry of plan) {
-    if (entry.vote === null || entry.firm) continue;
-    const voter = state.participants[entry.who]!;
-    if (voter.role !== 'chick' || !voter.brain) continue;
-    const neckOnly = voter.brain.suspicion?.deed === 'tell' && entry.vote === boasted;
-    if (boasted !== null && neckOnly && rng.next() < GOOSE_BOAST_SWAY) entry.vote = SKIP_VOTE;
-    else if (framed !== null && entry.who !== framed && entry.vote === SKIP_VOTE && rng.next() < GOOSE_FRAME_SWAY) entry.vote = framed;
   }
   return plan.sort((a, b) => a.at - b.at);
 }

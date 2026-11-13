@@ -419,14 +419,3 @@ export const BOT_COMPANY_RANGE = 6;
 /** It keeps walking away this long, then does not bolt again for a while, seconds. */
 export const BOT_WARY_TIME = 6;
 export const BOT_WARY_REST = 12;
-
-/** Bot Goose during its own sabotage: chance it walks to a fix point and pretends to work there. */
-export const GOOSE_LURK_CHANCE = 0.6;
-/** Bot Goose at a meeting, when nobody accuses it: chance it frames a chick, chance it boasts of honest work instead. */
-export const GOOSE_FRAME_CHANCE = 0.4;
-export const GOOSE_BOAST_CHANCE = 0.3;
-/** Chance an undecided bot chick believes the frame and votes with it. */
-export const GOOSE_FRAME_SWAY = 0.2;
-/** A boast makes a bot that only noticed the neck think again: chance it skips instead. */
-export const GOOSE_BOAST_SWAY = 0.3;
-
