@@ -87,6 +87,7 @@ export interface SelfView {
   /** Goose only: seconds until the next sabotage. */
   sabotageCooldown: number;
   under: number | null;
+  roomId: number | null;
   canPack: number | null;
   canReport: number | null;
   prompt: Prompt | null;
@@ -188,6 +189,7 @@ export function viewFor(state: WorldState, you: number): PlayerView {
       carpetCooldown: viewer.carpetCooldown,
       sabotageCooldown: viewer.role === 'goose' ? state.sabotageCooldown : 0,
       under: viewer.under,
+      roomId: viewer.roomId,
       canPack: viewer.canPack,
       canReport: viewer.canReport,
       prompt: viewer.prompt ? { ...viewer.prompt } : null,

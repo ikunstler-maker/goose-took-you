@@ -10,12 +10,15 @@ import { createTaskMarkers, type TaskMarkers } from './render/markers';
 import { buildOffice, type OfficeView } from './render/office';
 import { createStage } from './render/stage';
 import { setLang, t, type I18nKey } from './i18n';
-import { applyCommand, createWorld, LOCAL_PLAYER, me, step, type Command, type Role, type SimEvent, type WorldState } from './sim/world';
+import { applyCommand, createWorld, LOCAL_PLAYER, me, setLocalSeat, step, type Command, type Role, type SimEvent, type WorldState } from './sim/world';
+import { connect, serverUrl, type Online } from './net/client';
+import { applyView, createMirror, glide, type Targets } from './net/mirror';
+import { isCode, normalizeCode, type ClientMessage, type PlayerCommand, type WireView } from './net/protocol';
 import { linkToward } from './sim/carpets';
 import { createHud } from './ui/hud';
 import { createMinimap } from './ui/minimap';
 import { createCameraScreen } from './ui/cameras';
-import { createLobby } from './ui/lobby';
+import { createLobby, type OnlineInfo } from './ui/lobby';
 import { createMatchScreens } from './ui/match';
 import { createMeetingView } from './ui/meeting';
 import { loadSettings, saveSettings } from './ui/settings';
@@ -98,7 +101,10 @@ stage.scene.add(confetti.root);
 const minimap = createMinimap();
 const cameras = createCameraScreen(() => send({ type: 'stopWatching' }));
 const hud = createHud({
-  onNewOffice: () => startOffice(randomSeed()),
+  // Online, the office belongs to the room: only a new match changes it.
+  onNewOffice: () => {
+    if (!online) startOffice(randomSeed());
+  },
   // Decor signs carry text, so the office is redrawn in the new language.
   onLangChange: (lang) => {
     saveSettings({ lang });
@@ -113,7 +119,13 @@ const hud = createHud({
   },
 });
 
-const screens = createMatchScreens({ onNewMatch: () => startOffice(randomSeed()) });
+const screens = createMatchScreens({
+  onNewMatch: () => {
+    if (!online) startOffice(randomSeed());
+    else if (onlineInfo.host) online.again();
+    else hud.shout('online.hostAgain');
+  },
+});
 
 const lobby = createLobby({
   onLook: (color, accessory) => {
@@ -121,6 +133,9 @@ const lobby = createLobby({
     send({ type: 'setLook', color, accessory });
   },
   onStart: () => send({ type: 'start' }),
+  onCreate: () => goOnline({ t: 'create', look: savedLook() }),
+  onJoin: (code) => goOnline({ t: 'join', code, look: savedLook() }),
+  onLeave: () => leaveRoom(null),
 });
 
 const meeting = createMeetingView({
@@ -167,7 +182,9 @@ function hear(event: SimEvent): void {
   if (office) sound.play(office);
   const action = ACTION_SOUNDS[event.type];
   if (action && 'who' in event) {
-    const actor = world.participants[event.who]!;
+    // Online, a doer out of sight comes without a name: nothing to hear from.
+    const actor = world.participants[event.who];
+    if (!actor) return;
     const packedMe = event.type === 'packed' && event.victim === LOCAL_PLAYER;
     sound.play(action, event.who === LOCAL_PLAYER || packedMe ? 1 : loudness(actor.x, actor.z));
   }
@@ -212,7 +229,6 @@ function ambience(dt: number): void {
     alarmIn = ALARM_EVERY;
   }
   for (const p of world.participants) {
-    if (p.role !== 'goose') continue;
     const stretching = playing && p.alive && p.tell > 0 && p.under === null;
     if (stretching && !tellHeard.get(p.id)) {
       // The Goose hears its own neck; chicks only from close by and in plain sight.
@@ -345,8 +361,105 @@ function handle(events: SimEvent[]): void {
   }
 }
 
-function send(command: Command): void {
-  handle(applyCommand(world, LOCAL_PLAYER, command));
+function send(command: PlayerCommand): void {
+  if (online) online.send(command);
+  else handle(applyCommand(world, LOCAL_PLAYER, command));
+}
+
+// --- Online: the match runs on the server; this browser shows its own snapshot of it ---
+let online: Online | null = null;
+/** True until the first snapshot of a room (or of its next match) has been drawn. */
+let freshRoom = false;
+const targets: Targets = new Map();
+const onlineInfo: OnlineInfo = { available: serverUrl() !== '', status: 'off', code: '', players: 0, host: false, taken: [], error: null };
+let onlineSeat = -1;
+
+function savedLook(): { color: number; accessory: number } {
+  const { color, accessory } = loadSettings();
+  return { color, accessory };
+}
+
+function setRoomInUrl(code: string | null): void {
+  const url = new URL(window.location.href);
+  if (code) url.searchParams.set('room', code);
+  else url.searchParams.delete('room');
+  window.history.replaceState(null, '', url);
+}
+
+function goOnline(first: ClientMessage): void {
+  if (online) return;
+  onlineInfo.error = null;
+  online = connect(serverUrl(), first, {
+    onStatus: (status) => {
+      onlineInfo.status = status === 'online' ? 'in' : status;
+      lobby.setOnline(onlineInfo);
+    },
+    onRoom: (info) => {
+      onlineSeat = info.you;
+      Object.assign(onlineInfo, { code: info.code, players: info.players, host: info.host === info.you });
+      setRoomInUrl(info.code);
+      freshRoom = true;
+      lobby.setOnline(onlineInfo);
+    },
+    onRoster: (info) => {
+      Object.assign(onlineInfo, { players: info.players, host: info.host === onlineSeat });
+      lobby.setOnline(onlineInfo);
+    },
+    onState: showState,
+    onEnd: (reason) => leaveRoom(`online.error.${reason}` as I18nKey),
+  });
+}
+
+/** Back to a private office on this device. */
+function leaveRoom(error: I18nKey | null): void {
+  online?.close();
+  online = null;
+  targets.clear();
+  setLocalSeat(0);
+  setRoomInUrl(null);
+  Object.assign(onlineInfo, { status: 'off', code: '', players: 0, host: false, taken: [], error });
+  startOffice(randomSeed());
+  lobby.setOnline(onlineInfo);
+}
+
+function showState(view: WireView, changed: Partial<WireView>, events: SimEvent[]): void {
+  const fresh = freshRoom;
+  if (fresh) {
+    freshRoom = false;
+    minigames.close();
+    cameras.close();
+    meeting.hide();
+    screens.hideAll();
+    targets.clear();
+    world = createMirror(view);
+    // A new copy has seen nothing yet: every part of the snapshot counts as new.
+    applyView(world, view, view, targets);
+    rebuildOffice();
+    chicks.rebuild(world);
+    stage.focus(me(world).x, me(world).z);
+    hud.setSeed(view.seed);
+    const roomId = me(world).roomId;
+    hud.setRoom(roomId === null ? null : world.level.rooms[roomId]!.type);
+    // Coming back mid-match lands on the right screen.
+    if (view.phase === 'lobby') lobby.show(me(world).color, me(world).accessory);
+    else lobby.hide();
+    if (view.phase === 'over') screens.showOver(world);
+    else if (view.phase !== 'lobby' && !me(world).alive) screens.showPacked(world);
+  } else applyView(world, view, changed, targets);
+
+  if (view.phase === 'lobby' && (fresh || changed.seats)) {
+    const taken = view.seats.filter((seat) => seat.human && seat.id !== view.you).map((seat) => seat.color).sort();
+    if (taken.join() !== onlineInfo.taken.join()) {
+      onlineInfo.taken = taken;
+      lobby.setOnline(onlineInfo);
+    }
+  }
+  handle(events);
+  // Things that change without an event of one's own: the shared bar, the task list, the prompt.
+  if (fresh || changed.progress !== undefined || changed.tasks || changed.self || changed.sabotage !== undefined) {
+    hud.setTasks(world);
+    if (fresh || changed.tasks) markers?.refresh(world);
+  }
 }
 
 /** `?role=goose|chick` fixes the player's role for testing; otherwise it is random. */
@@ -480,6 +593,10 @@ window.addEventListener('blur', () => {
 window.addEventListener('wheel', (event) => stage.zoomBy(event.deltaY > 0 ? 1.1 : 1 / 1.1), { passive: true });
 
 startOffice(seedFromUrl() ?? randomSeed());
+lobby.setOnline(onlineInfo);
+// A shared link carries the room code: walk straight in.
+const linkedRoom = normalizeCode(new URLSearchParams(window.location.search).get('room') ?? '');
+if (onlineInfo.available && isCode(linkedRoom)) goOnline({ t: 'join', code: linkedRoom, look: savedLook() });
 
 // --- Loop: fixed-step simulation, free-running rendering ---
 let last = performance.now();
@@ -490,12 +607,14 @@ function frame(now: number): void {
   last = now;
   accumulator += dt;
   while (accumulator >= TICK) {
-    handle(step(world, TICK));
+    // Online the server steps the match; here only the mini-game windows keep their own time.
+    if (!online) handle(step(world, TICK));
     minigames.tick(TICK);
     // The pack countdown in the prompt ticks down by itself.
-    if (world.tick % 15 === 0 && (me(world).canPack !== null || world.tasks.some((task) => task.owner === LOCAL_PLAYER && task.rush > 0))) hud.setTasks(world);
+    if (!online && world.tick % 15 === 0 && (me(world).canPack !== null || world.tasks.some((task) => task.owner === LOCAL_PLAYER && task.rush > 0))) hud.setTasks(world);
     accumulator -= TICK;
   }
+  if (online) glide(world, targets, dt);
 
   if (world.phase === 'meeting') meeting.update(world);
   hud.setAlarm(world);
@@ -524,9 +643,11 @@ requestAnimationFrame(frame);
 (window as unknown as { __goose: unknown }).__goose = {
   world: () => world,
   /** Lets automated checks act as any participant through the normal command path. */
-  send: (who: number, command: Command) => handle(applyCommand(world, who, command)),
+  send: (who: number, command: Command) => {
+    if (!online) handle(applyCommand(world, who, command));
+  },
   /** Fast-forwards the match through the normal step-and-handle path. */
   advance: (seconds: number) => {
-    for (let t = 0; t < seconds && world.phase !== 'over'; t += TICK) handle(step(world, TICK));
+    for (let t = 0; t < seconds && !online && world.phase !== 'over'; t += TICK) handle(step(world, TICK));
   },
 };

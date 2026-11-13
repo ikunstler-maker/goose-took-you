@@ -151,3 +151,24 @@ Entry format (≤8 lines):
 - Seen: 2026-11-13
 
 ## CI
+
+## Online
+### «Гра з друзями» block is missing in the lobby
+- Symptom: no create/join controls on the deployed site.
+- Root cause: `VITE_SERVER_URL` was empty when the site was built; it is read at build time.
+- Fix: set it in the site host's settings (`wss://<name>.onrender.com`) and redeploy the site.
+- Verify: the lobby shows the block; locally use `?server=ws://localhost:8787` on `localhost` only.
+- Seen: 2026-11-13
+
+### Browser cannot connect to the game server
+- Symptom: «Будимо офіс…» for over a minute, then «Зв'язок із сервером втрачено».
+- Root cause: the free instance is still waking; or `ALLOWED_ORIGINS` on the server does not list the site address exactly (scheme, no trailing slash); or `ws://` used from an `https://` page.
+- Fix: open `https://<server>/healthz` (must answer `ok N`); correct `ALLOWED_ORIGINS`; use `wss://`.
+- Verify: two browser tabs, create a room in one, join by code in the other.
+- Seen: 2026-11-13
+
+### Two-browser test in the cloud sandbox
+- Symptom: need to check online play without a deployed server.
+- Fix: `npm run build && npm run build:server`, `PORT=8787 node server/dist/index.js`, `vite preview`, open two Playwright pages with `?server=ws://localhost:8787` (second with `&room=CODE`). `__goose.send/advance` do nothing online by design.
+- Seen: 2026-11-13
+

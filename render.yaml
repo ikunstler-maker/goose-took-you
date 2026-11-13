@@ -1,0 +1,14 @@
+# Render blueprint for the game server (online rooms). The site itself is hosted elsewhere.
+services:
+  - type: web
+    name: goose-took-you-server
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm ci --include=dev && npm run build:server
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      # Comma-separated addresses of the site allowed to connect, e.g. https://example.com
+      - key: ALLOWED_ORIGINS
+        sync: false
