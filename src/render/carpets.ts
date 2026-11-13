@@ -122,7 +122,7 @@ export function createCarpets(world: WorldState): CarpetsView {
       w.carpets.forEach((c, i) => {
         const view = views[i];
         if (!view) return;
-        const seen = w.visible[Math.floor(c.z) * n + Math.floor(c.x)] === 1;
+        const seen = w.sight[LOCAL_PLAYER]!.cells[Math.floor(c.z) * n + Math.floor(c.x)] === 1;
         const lift = seen && c.lift > 0 ? Math.sin((c.lift / CARPET_DIVE) * Math.PI) : 0;
         view.hinge.rotation.x = -lift * 0.9;
         const hidden = w.participants.some((p) => p.under === c.id);

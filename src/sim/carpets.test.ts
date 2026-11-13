@@ -17,7 +17,7 @@ function wait(state: WorldState, seconds: number): SimEvent[] {
   return events;
 }
 
-const seen = (state: WorldState): number => state.visible.reduce((a, b) => a + b, 0);
+const seen = (state: WorldState): number => state.sight[0]!.cells.reduce((a, b) => a + b, 0);
 
 /** Player Goose standing on rug 0, with the bots frozen. */
 function onRug(seed: number): WorldState {

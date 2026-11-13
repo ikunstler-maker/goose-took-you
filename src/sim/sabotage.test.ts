@@ -17,7 +17,7 @@ function wait(state: WorldState, seconds: number): SimEvent[] {
   return events;
 }
 
-const seen = (state: WorldState): number => state.visible.reduce((a, b) => a + b, 0);
+const seen = (state: WorldState): number => state.sight[0]!.cells.reduce((a, b) => a + b, 0);
 
 /** A free nav cell within reach of the prop, or -1. */
 function standCell(state: WorldState, point: number): number {

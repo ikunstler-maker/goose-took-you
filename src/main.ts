@@ -140,7 +140,7 @@ function loudness(x: number, z: number): number {
   const { size } = world.level;
   const cx = Math.floor(x);
   const cz = Math.floor(z);
-  if (cx < 0 || cz < 0 || cx >= size || cz >= size || world.visible[cz * size + cx] !== 1) return 0;
+  if (cx < 0 || cz < 0 || cx >= size || cz >= size || world.sight[LOCAL_PLAYER]!.cells[cz * size + cx] !== 1) return 0;
   return Math.max(0, 1 - Math.hypot(x - self.x, z - self.z) / HEARING_RANGE);
 }
 

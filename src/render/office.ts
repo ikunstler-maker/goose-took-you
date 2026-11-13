@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { CUTAWAY_REACH, VISION_RADIUS, WALL_HEIGHT, WALL_LOW, WINDOW_HEIGHT } from '../config';
 import { FLOOR, GLASS, SOLID, type Level } from '../sim/level';
 import type { RoomType } from '../sim/prefabs';
-import { me, type WorldState } from '../sim/world';
+import { LOCAL_PLAYER, me, type WorldState } from '../sim/world';
 import { FLOOR_DENSITY, floorMaterial } from './floors';
 import { box, cylinder, disposeTree, fogUniforms, mat, sphere, withFog } from './kit';
 import { buildProp } from './props';
@@ -320,7 +320,7 @@ export function buildOffice(level: Level): OfficeView {
   const moving = new Set<number>();
 
   const refreshVisibility = (world: WorldState): void => {
-    const visible = world.visible;
+    const visible = world.sight[LOCAL_PLAYER]!.cells;
     // Fog goal: seen floor, plus the walls and windows that border it.
     for (let z = 0; z < n; z++) {
       for (let x = 0; x < n; x++) {
@@ -373,8 +373,8 @@ export function buildOffice(level: Level): OfficeView {
     update(world, time, dt) {
       // No sun shafts while the lights are out.
       rays.visible = world.sabotage?.kind !== 'overheat';
-      if (world.visibleVersion !== seenVersion) {
-        seenVersion = world.visibleVersion;
+      if (world.sight[LOCAL_PLAYER]!.version !== seenVersion) {
+        seenVersion = world.sight[LOCAL_PLAYER]!.version;
         refreshVisibility(world);
       }
 
