@@ -63,7 +63,8 @@ export type PropKind =
   | 'slotMachine'
   | 'bigWinSign'
   | 'cameraDesk'
-  | 'badgeScanner';
+  | 'badgeScanner'
+  | 'badgeRack';
 
 /** Quarter turns: 0 = front faces south (+z), 1 = east, 2 = north, 3 = west. */
 export type Rot = 0 | 1 | 2 | 3;
@@ -214,8 +215,7 @@ export const PREFABS: Record<RoomType, PrefabProp[]> = {
   security: [
     p('cameraDesk', -2.6, -4.9, 3.6, 1.2),
     p('stool', -2.6, -3.7, 0.5, 0.5),
-    p('badgeScanner', 3.8, -4.6, 1, 1),
-    p('badgeScanner', 3.8, 3, 1, 1),
+    p('badgeRack', 3.8, -4.9, 1.6, 0.6),
     p('lockers', -5.4, 2.6, 2, 0.6, 1),
     p('cabinet', 5.4, -1, 1, 0.6, 3),
     p('ficus', -5, 5, 0.8, 0.8),

@@ -653,13 +653,24 @@ const BUILDERS: Record<PropKind, (variant: number) => THREE.Group> = {
     );
   },
 
+  // Turnstile reader by the door: a post with a card slot and a barrier arm.
   badgeScanner: () =>
     group(
-      cylinder(0.5, 0.5, 0.08, mat(0x8a94a6), 0, 0.04, 0, 20),
-      box(0.18, 1.1, 0.18, METAL, 0, 0.6, -0.3),
-      box(0.4, 0.3, 0.12, DARK, 0, 1.2, -0.25),
-      box(0.3, 0.06, 0.02, glow(0x4dff88), 0, 1.25, -0.185, false),
+      box(0.5, 1.05, 0.5, mat(0x5b6577), 0, 0.525, 0),
+      box(0.56, 0.08, 0.56, DARK, 0, 1.09, 0),
+      box(0.3, 0.2, 0.04, DARK, 0, 0.85, 0.26, false),
+      box(0.22, 0.04, 0.02, glow(0x4dff88), 0, 0.92, 0.285, false),
+      box(0.06, 0.06, 0.9, mat(0xe5433d), 0, 0.8, 0.7),
+      box(0.06, 0.06, 0.9, WHITE, 0, 0.6, 0.7),
     ),
+
+  // Wall rack with key cards on hooks.
+  badgeRack: () => {
+    const g = group(box(1.6, 1.0, 0.1, WOOD_DARK, 0, 1.3, -0.2), box(1.6, 0.9, 0.5, mat(0x8a94a6), 0, 0.45, 0));
+    const colors = [0xfbf7ef, 0xffc93d, 0x8fcbff, 0xffa8c5, 0xfbf7ef];
+    for (let i = 0; i < 5; i++) g.add(box(0.2, 0.3, 0.02, mat(colors[i]!), -0.56 + i * 0.28, 1.3, -0.14, false), box(0.03, 0.03, 0.06, METAL, -0.56 + i * 0.28, 1.5, -0.13, false));
+    return g;
+  },
 };
 
 export function buildProp(kind: PropKind, variant: number): THREE.Group {

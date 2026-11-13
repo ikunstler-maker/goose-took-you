@@ -100,6 +100,10 @@ interface Door {
   outs: number[];
   x: number;
   z: number;
+  /** Room cells along the opening, and the unit step from the room out through the door. */
+  ins: number[];
+  dx: number;
+  dz: number;
 }
 
 interface Build {
@@ -275,6 +279,40 @@ function placeHubs(b: Build, rooms: Room[]): void {
   }
 }
 
+/**
+ * Badge reader of the security room: a post against the wall right beside a
+ * door to the corridor, so the doorway itself stays clear. Falls back to a
+ * fixed spot in the hub core if no door has a free jamb.
+ */
+function placeTurnstiles(b: Build, rooms: Room[]): void {
+  const { n } = b;
+  for (const room of rooms) {
+    if (room.type !== 'security') continue;
+    let spot: { x: number; z: number; rot: Rot } | null = null;
+    for (const door of b.doors[room.id]!) {
+      const px = door.dz !== 0 ? 1 : 0;
+      const pz = door.dx !== 0 ? 1 : 0;
+      const first = door.ins[0]!;
+      const fx = first % n;
+      const fz = Math.floor(first / n);
+      for (const i of [-1, door.ins.length, -2, door.ins.length + 1]) {
+        const cx = fx + i * px;
+        const cz = fz + i * pz;
+        const cell = cz * n + cx;
+        // Against a solid wall of this room, on free room floor.
+        if (b.zone[cell] !== room.id || b.occ[cell] === 1) continue;
+        if (b.cells[(cz + door.dz) * n + cx + door.dx] !== SOLID) continue;
+        const rot: Rot = door.dz === 1 ? 2 : door.dz === -1 ? 0 : door.dx === 1 ? 3 : 1;
+        spot = { x: cx + 0.5, z: cz + 0.5, rot };
+        break;
+      }
+      if (spot) break;
+    }
+    spot ??= { x: room.cx + 3.8, z: room.cz + 3, rot: 0 };
+    addProp(b, { kind: 'badgeScanner', x: spot.x, z: spot.z, w: 1, d: 1, rot: spot.rot, solid: true, room: room.id, variant: 0, hub: true });
+  }
+}
+
 /** A corridor may run through this cell. */
 function passable(b: Build, x: number, z: number): boolean {
   if (x < 1 || z < 1 || x > b.n - 2 || z > b.n - 2) return false;
@@ -296,6 +334,7 @@ function findDoor(b: Build, room: Room, tx: number, tz: number): { cells: number
         const pz = dx !== 0 ? 1 : 0;
         const walls: number[] = [];
         const outs: number[] = [];
+        const ins: number[] = [];
         let ok = true;
         // One extra cell on each side keeps solid jambs around the opening.
         for (let i = -1; i <= width && ok; i++) {
@@ -312,13 +351,14 @@ function findDoor(b: Build, room: Room, tx: number, tz: number): { cells: number
             if (b.zone[inner] !== room.id || b.occ[inner] === 1) ok = false;
           }
           walls.push(wz * n + wx);
+          ins.push(cz * n + cx);
           outs.push((cz + 2 * dz) * n + (cx + 2 * dx));
         }
         if (!ok) continue;
         const ox = x + 2 * dx;
         const oz = z + 2 * dz;
         const score = Math.abs(ox - tx) + Math.abs(oz - tz) + b.rng.next() * 6;
-        if (!best || score < best.score) best = { cells: walls, door: { outs, x: ox, z: oz }, score };
+        if (!best || score < best.score) best = { cells: walls, door: { outs, x: ox, z: oz, ins, dx, dz }, score };
       }
     }
   }
@@ -658,6 +698,7 @@ export function generateLevel(seed: number): Level {
   rooms.forEach(() => b.doors.push([]));
   placeHubs(b, rooms);
   carveCorridors(b, rooms);
+  placeTurnstiles(b, rooms);
   glaze(b);
 
   for (const room of rooms) {
