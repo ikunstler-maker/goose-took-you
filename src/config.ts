@@ -395,3 +395,16 @@ export const GPU_RATE_SPREAD = 0.25;
 export const GPU_DRIFT_CHANCE = 0.4;
 export const GPU_DRIFT_AMPLITUDE = 0.1;
 export const GPU_DRIFT_PERIOD = 6;
+
+/** Bots and the Goose's neck: chance a bot chick in sight and range notices one stretch. */
+export const BOT_TELL_NOTICE = 0.3;
+/** Chance it votes for the neck's owner after noticing once, and after noticing twice or more. */
+export const BOT_TELL_VOTE = 0.5;
+export const BOT_TELL_SURE = 0.9;
+/** A bot chick alone with its suspect this close walks off to other chicks, metres. */
+export const BOT_WARY_RANGE = 5;
+/** «Alone» means no third participant in sight within this distance, metres. */
+export const BOT_COMPANY_RANGE = 6;
+/** It keeps walking away this long, then does not bolt again for a while, seconds. */
+export const BOT_WARY_TIME = 6;
+export const BOT_WARY_REST = 12;

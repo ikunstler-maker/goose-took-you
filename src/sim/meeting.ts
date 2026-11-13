@@ -3,6 +3,9 @@ import {
   BOT_HUNCH_CHANCE,
   BOT_IDLE_VOTE_CHANCE,
   BOT_RANDOM_VOTE,
+  BOT_TELL_NOTICE,
+  BOT_TELL_SURE,
+  BOT_TELL_VOTE,
   BOX_SUSPECT_RANGE,
   CHAT_TEXT_MAX,
   MEETING_RESULT,
@@ -18,6 +21,7 @@ import {
   PLAYER_SWAY_SAW,
   PLAYER_SWAY_SUS,
   PLAYER_SWAY_VOUCH,
+  TELL_VISIBLE_RANGE,
 } from '../config';
 import { fitsIn } from './nav';
 import { remember, type Note, type SeenKind } from './notes';
@@ -50,6 +54,8 @@ export type ChatKind =
   | 'sawFix'
   | 'iFixed'
   | 'vouch'
+  /** A bot noticed the Goose's neck stretch. */
+  | 'neck'
   /** Quick reports only a human makes: met someone somewhere, a plain suspicion, a plain word for someone. */
   | 'sawIn'
   | 'suspect'
@@ -74,6 +80,7 @@ export const CHAT_NEEDS: Record<ChatKind, { about: boolean; room: boolean }> = {
   sawFix: { about: true, room: true },
   iFixed: { about: false, room: true },
   vouch: { about: true, room: true },
+  neck: { about: true, room: true },
   sawIn: { about: true, room: true },
   suspect: { about: true, room: false },
   trust: { about: true, room: false },
@@ -155,8 +162,10 @@ export interface Suspicion {
   who: number;
   level: number;
   room: RoomType | null;
-  /** What was seen: a pack, or the Goose diving under / climbing out of a rug. */
-  deed: 'pack' | 'carpet' | 'box';
+  /** What was seen: a pack, the Goose diving under / climbing out of a rug, someone by a fresh box, a long neck. */
+  deed: 'pack' | 'carpet' | 'box' | 'tell';
+  /** `tell` only: how many neck stretches were noticed. */
+  times?: number;
 }
 
 const roomType = (state: WorldState, roomId: number | null): RoomType | null =>
@@ -174,6 +183,25 @@ export function noteDeed(state: WorldState, goose: Participant, victim: Particip
     // A pack outweighs a rug sighting; never downgrade.
     if (p.brain.suspicion?.level === 2 && p.brain.suspicion.deed === 'pack' && deed === 'carpet') continue;
     p.brain.suspicion = { who: goose.id, level: 2, room: roomType(state, goose.roomId), deed };
+  }
+}
+
+/**
+ * The Goose's neck stretches: every bot chick close enough and looking may
+ * notice. One sighting is a hunch, a second one near certainty.
+ */
+export function noteTell(state: WorldState, goose: Participant): void {
+  if (goose.under !== null || !goose.alive) return;
+  for (const p of state.participants) {
+    if (!p.brain || p === goose || !p.alive || p.role !== 'chick') continue;
+    if (!canSee(state.level, p.x, p.z, goose.x, goose.z, Math.min(TELL_VISIBLE_RANGE, sightRadius(state)))) continue;
+    const roll = (((state.tick + 1) * 2654435761 + p.id * 40503 + goose.id * 977) >>> 0) % 1000;
+    if (roll >= BOT_TELL_NOTICE * 1000) continue;
+    const s = p.brain.suspicion;
+    // Seeing the deed itself outweighs any neck.
+    if (s && s.level === 2) continue;
+    const times = s && s.deed === 'tell' && s.who === goose.id ? (s.times ?? 1) + 1 : 1;
+    p.brain.suspicion = { who: goose.id, level: 1, room: roomType(state, goose.roomId), deed: 'tell', times };
   }
 }
 
@@ -386,6 +414,9 @@ function planBots(
     if (s && s.level === 2 && state.participants[s.who]!.alive) {
       say(t, b.id, s.deed === 'carpet' ? 'sawCarpet' : 'saw', s.who, s.room);
       vote(b.id, s.who, true);
+    } else if (s && s.deed === 'tell' && state.participants[s.who]!.alive) {
+      say(t, b.id, 'neck', s.who, s.room);
+      vote(b.id, rng.next() < ((s.times ?? 1) >= 2 ? BOT_TELL_SURE : BOT_TELL_VOTE) ? s.who : SKIP_VOTE);
     } else if (s && s.level === 1 && state.participants[s.who]!.alive) {
       say(t, b.id, 'sus', s.who, s.room);
       vote(b.id, rng.next() < BOT_HUNCH_CHANCE ? s.who : SKIP_VOTE);

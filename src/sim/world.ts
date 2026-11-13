@@ -48,7 +48,7 @@ import {
   type Task,
   type TaskKind,
 } from './tasks';
-import { castVote, meetingTable, noteDeed, sayLine, startMeeting, stepMeeting, type ChatKind, type Meeting } from './meeting';
+import { castVote, meetingTable, noteDeed, noteTell, sayLine, startMeeting, stepMeeting, type ChatKind, type Meeting } from './meeting';
 import { carpetInReach, placeCarpets, type Carpet } from './carpets';
 import { noteMet, noteSeen, type Seen } from './notes';
 import type { RoomType } from './prefabs';
@@ -925,6 +925,7 @@ function stepParticipant(state: WorldState, p: Participant, dt: number, events: 
       p.tellIn -= dt * (state.sabotage ? TELL_SABOTAGE_RATE : 1);
       if (p.tellIn <= 0) {
         p.tell = TELL_TIME;
+        noteTell(state, p);
         p.tellIn = TELL_MIN + ((state.tick * 7919 + p.id * 31) % 1000) / 1000 * (TELL_MAX - TELL_MIN);
       }
     }
