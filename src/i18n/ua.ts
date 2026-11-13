@@ -205,6 +205,7 @@ export const ua = {
   'room.gambling': 'Лабораторія Гемблінгу',
   'room.security': 'Аналітика й Охорона',
   'room.corridor': 'Коридор',
+  'minimap.title': 'Мінікарта: відвідані кімнати й ваші завдання. Клацніть, щоб збільшити',
   'decor.brand': 'GOLDEN EGG',
   'decor.brandSub': 'Traffic & Motion',
   'decor.sticker': 'ПОГРАЙСЯ ЗІ ШРИФТАМИ',

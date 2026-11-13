@@ -207,6 +207,7 @@ export const ru: Record<I18nKey, string> = {
   'room.gambling': 'Лаборатория Гемблинга',
   'room.security': 'Аналитика и Охрана',
   'room.corridor': 'Коридор',
+  'minimap.title': 'Миникарта: посещённые комнаты и ваши задания. Щёлкните, чтобы увеличить',
   'decor.brand': 'GOLDEN EGG',
   'decor.brandSub': 'Traffic & Motion',
   'decor.sticker': 'ПОИГРАЙСЯ СО ШРИФТАМИ',

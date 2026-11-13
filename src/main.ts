@@ -12,6 +12,7 @@ import { setLang, t, type I18nKey } from './i18n';
 import { applyCommand, createWorld, LOCAL_PLAYER, me, step, type Command, type Role, type SimEvent, type WorldState } from './sim/world';
 import { linkToward } from './sim/carpets';
 import { createHud } from './ui/hud';
+import { createMinimap } from './ui/minimap';
 import { createLobby } from './ui/lobby';
 import { createMatchScreens } from './ui/match';
 import { createMeetingView } from './ui/meeting';
@@ -90,6 +91,7 @@ function rebuildOffice(): void {
   stage.fitSun(world.level.size);
 }
 
+const minimap = createMinimap();
 const hud = createHud({
   onNewOffice: () => startOffice(randomSeed()),
   // Decor signs carry text, so the office is redrawn in the new language.
@@ -450,6 +452,7 @@ function frame(now: number): void {
 
   if (world.phase === 'meeting') meeting.update(world);
   hud.setAlarm(world);
+  minimap.update(world);
   touch.update(world);
   stage.setGloom(world.sabotage?.kind === 'overheat' && world.phase === 'play' ? 1 : 0, dt);
 
