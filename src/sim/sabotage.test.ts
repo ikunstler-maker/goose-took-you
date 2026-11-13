@@ -173,7 +173,8 @@ describe('bots and sabotages', () => {
     }
     expect(runs).toBeGreaterThanOrEqual(10);
     expect(fixed / runs).toBeGreaterThanOrEqual(0.5);
-  });
+    // Twelve full sabotage runs: slow on a busy CI machine, like the other whole-match tests.
+  }, 120_000);
 
   it('the bot Goose starts sabotages', () => {
     let startedCount = 0;
@@ -183,5 +184,5 @@ describe('bots and sabotages', () => {
       if (events.some((e) => e.type === 'sabotageStarted')) startedCount++;
     }
     expect(startedCount).toBeGreaterThanOrEqual(3);
-  });
+  }, 120_000);
 });
